@@ -307,30 +307,6 @@ def _construir_tabla_lben_completa(modelo_params: dict) -> tuple:
     return filas, cols
 
 
-def _construir_tabla_lben_resumen(modelo_params: dict) -> tuple:
-    """
-    Tabla RESUMEN 2 columnas: Mes + LBEn (kWh/mes).
-    Usada exclusivamente en MonitoreoPage.
-    """
-    from core.models.promedio import _NOMBRES_MES
-    lben = modelo_params.get("lben_mensual", {})
-    cols = ["Mes", "N datos", "Outliers", "IC inferior", "LBEn (kWh/mes)", "IC superior"]
-    filas = []
-    for mes in range(1, 13):
-        lb_val  = lben.get(mes)
-        ic_vals = ic.get(mes, (None, None))
-        n_dep   = len(depurados.get(mes, []))
-        n_out   = len(outl.get(mes, []))
-        filas.append([
-            _NOMBRES_MES[mes],
-            str(n_dep),
-            str(n_out) if n_out > 0 else "—",
-            f"{ic_vals[0]:,.2f}" if ic_vals[0] is not None else "—",
-            f"{lb_val:,.2f}"     if lb_val    is not None else "Sin datos",
-            f"{ic_vals[1]:,.2f}" if ic_vals[1] is not None else "—",
-        ])
-    return filas, cols
-
 
 def _construir_tabla_indice_cociente(modelo_params, vars_ind, fechas, consumo, lb):
     """
