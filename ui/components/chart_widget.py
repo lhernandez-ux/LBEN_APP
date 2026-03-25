@@ -661,6 +661,377 @@ class ChartWidget(ctk.CTkFrame):
         fig.update_layout(**layout)
         self._render(fig)
 
+    # ── Gráfico 1-nuevo: Scatter consumos por año + LBEn promedio + límites ±10% ──
+    # Aplica a Modelos 1 (promedio) y 2 (cociente)
+
+    def plot_scatter_lben_limites(self, resultado: dict, titulo_proyecto: str = ""):
+        """
+        Scatter de consumos históricos agrupados por mes (eje X = 12 meses).
+        Superpone:
+          - LBEn mensual (línea azul sólida)
+          - Límite +10% sobre LBEn (línea naranja punteada)
+          - Límite -10% sobre LBEn (línea verde punteada)
+        Un punto por cada año-mes disponible en el histórico.
+        """
+        unidad  = resultado.get("unidad", "")
+        params  = resultado.get("modelo_params", {})
+        modelo_id = params.get("modelo_id", resultado.get("modelo_id", "promedio"))
+
+        # Intentar datos_por_mes (Modelo 1) o coc_depurados (Modelo 2)
+        datos_por_mes = params.get("datos_por_mes", {})
+        coc_dep       = params.get("coc_depurados", {})
+        lben_mensual  = params.get("lben_mensual", {})
+        años_por_mes  = params.get("años_por_mes", {})
+        outliers_mes  = params.get("outliers", {})
+        es_cociente   = not datos_por_mes or not any(datos_por_mes.values())
+
+        fuente = coc_dep if es_cociente else datos_por_mes
+        if not fuente or not any(fuente.values()):
+            return
+
+        NOMBRES = ["Ene","Feb","Mar","Abr","May","Jun",
+                   "Jul","Ago","Sep","Oct","Nov","Dic"]
+        PALETA  = ["#2E86C1","#E67E22","#27AE60","#8E44AD",
+                   "#E74C3C","#1ABC9C","#F39C12","#2C3E50"]
+
+        # Años únicos
+        años_vistos = sorted({
+            a for mes in range(1,13)
+            for a in años_por_mes.get(mes, [])
+            if a is not None
+        })
+        def _label(idx):
+            return str(años_vistos[idx]) if idx < len(años_vistos) else f"Año {idx+1}"
+
+        n_years = max((len(v) for v in fuente.values() if v), default=0)
+
+        fig    = go.Figure()
+        layout = get_chart_layout()
+        layout["title"] = {
+            "text": (f"Scatter LBEn ±10% — {titulo_proyecto}"
+                     if titulo_proyecto else "Scatter consumos por mes — LBEn ±10%"),
+            "font": {"size": 15, "color": COLORS.text_primary},
+            "x": 0.5, "xanchor": "center",
+        }
+        layout["xaxis"]["title"]     = {"text": "Mes"}
+        layout["xaxis"]["tickangle"] = 0
+        y_label = (f"Cociente (kWh/{params.get('variable','variable')})"
+                   if es_cociente else
+                   (f"Consumo ({unidad})" if unidad else "Consumo"))
+        layout["yaxis"]["title"]  = {"text": y_label}
+        layout["margin"]          = {"l": 75, "r": 20, "t": 70, "b": 90}
+        layout["plot_bgcolor"]    = "#FAFAFA"
+        layout["legend"]          = {
+            "orientation": "h", "yanchor": "top", "y": -0.22,
+            "xanchor": "center", "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#E0E0E0", "borderwidth": 1,
+        }
+
+        # ── Outliers con X ────────────────────────────────────────────────────
+        x_out, y_out, lbl_out = [], [], []
+        for mes in range(1, 13):
+            for v in outliers_mes.get(mes, []):
+                x_out.append(NOMBRES[mes-1])
+                y_out.append(v)
+                lbl_out.append(f"{NOMBRES[mes-1]}: {v:,.2f} — outlier eliminado")
+        if x_out:
+            fig.add_trace(go.Scatter(
+                x=x_out, y=y_out, mode="markers",
+                name="Outlier eliminado",
+                marker=dict(color="#E74C3C", size=10, symbol="x",
+                            line=dict(width=2.5, color="#E74C3C")),
+                text=lbl_out,
+                hovertemplate="%{text}<extra></extra>",
+            ))
+
+        # ── Puntos por año ────────────────────────────────────────────────────
+        for yr_idx in range(n_years):
+            y_vals, hover = [], []
+            label = _label(yr_idx)
+            for mes in range(1, 13):
+                vals = fuente.get(mes, [])
+                if yr_idx < len(vals):
+                    y_vals.append(vals[yr_idx])
+                    hover.append(f"{NOMBRES[mes-1]} {label}: {vals[yr_idx]:,.2f}")
+                else:
+                    y_vals.append(None)
+                    hover.append("")
+            color = PALETA[yr_idx % len(PALETA)]
+            fig.add_trace(go.Scatter(
+                x=NOMBRES, y=y_vals, mode="markers",
+                name=label,
+                marker=dict(color=color, size=9, line=dict(width=1.5, color="white")),
+                text=hover,
+                hovertemplate="%{text}<extra></extra>",
+            ))
+
+        # ── LBEn mensual ──────────────────────────────────────────────────────
+        lben_vals = [lben_mensual.get(m) for m in range(1, 13)]
+        if any(v is not None for v in lben_vals):
+            lben_clean = [v if v is not None else None for v in lben_vals]
+
+            # Límite +10%
+            sup10 = [v * 1.10 if v is not None else None for v in lben_clean]
+            fig.add_trace(go.Scatter(
+                x=NOMBRES, y=sup10, mode="lines",
+                name="IC superior +10%",
+                line=dict(color="#E67E22", width=1.8, dash="dot"),
+                hovertemplate="<b>%{x}</b><br>+10%%: %{y:,.2f}<extra></extra>",
+            ))
+
+            # Límite -10%
+            inf10 = [v * 0.90 if v is not None else None for v in lben_clean]
+            fig.add_trace(go.Scatter(
+                x=NOMBRES, y=inf10, mode="lines",
+                name="IC inferior -10%",
+                line=dict(color="#27AE60", width=1.8, dash="dot"),
+                fill="tonexty",
+                fillcolor="rgba(39,174,96,0.06)",
+                hovertemplate="<b>%{x}</b><br>-10%%: %{y:,.2f}<extra></extra>",
+            ))
+
+            # LBEn principal
+            fig.add_trace(go.Scatter(
+                x=NOMBRES, y=lben_clean, mode="lines+markers",
+                name="LBEn (promedio mes)",
+                line=dict(color="#1B4F72", width=2.8),
+                marker=dict(color="#1B4F72", size=8,
+                            line=dict(width=1.5, color="white")),
+                hovertemplate="<b>%{x}</b><br>LBEn: %{y:,.2f}<extra></extra>",
+            ))
+
+        fig.update_layout(**layout)
+        self._render(fig)
+
+    # ── Gráfico 2-nuevo: Correlación consumo vs variable relevante ────────────
+    # Aplica a Modelos 2 (cociente) y 3 (regresión)
+
+    def plot_correlacion_variable(self, resultado: dict):
+        """
+        Scatter X = variable independiente principal, Y = consumo real.
+        Muestra la línea del modelo ajustado (regresión o cociente) encima.
+        Incluye anotación con ecuación y R².
+        """
+        params   = resultado.get("modelo_params", {})
+        unidad   = resultado.get("unidad", "")
+        x_disp   = resultado.get("x_dispersion", [])
+        x_label  = resultado.get("x_label", "Variable")
+
+        # Usar datos históricos para mostrar el ajuste del modelo
+        consumo_h = resultado.get("consumo_hist", [])
+        fechas_h  = resultado.get("fechas_hist", [])
+
+        if not x_disp or not consumo_h:
+            return
+
+        # Reconstruir x_disp para el histórico (puede ser del reporte si hay reporte)
+        # Intentamos recuperar x desde modelo_params
+        x_hist = params.get("x_hist", x_disp)
+        if len(x_hist) != len(consumo_h):
+            x_hist = x_disp[:len(consumo_h)]
+
+        # Línea del modelo: generar puntos suavizados
+        import numpy as np
+        x_arr = [float(v) for v in x_hist if v is not None]
+        y_arr = consumo_h[:len(x_arr)]
+
+        if len(x_arr) < 2:
+            return
+
+        x_min, x_max = min(x_arr), max(x_arr)
+        x_line = list(np.linspace(x_min, x_max, 60))
+
+        # Calcular línea según tipo de modelo
+        coefs = params.get("coeficientes", {})
+        indice = params.get("indice", None)
+
+        if coefs and len(coefs) >= 2:
+            # Regresión lineal simple o múltiple (solo 1ª variable en scatter)
+            vals = list(coefs.values())
+            intercepto = vals[0]
+            pendiente  = vals[1]
+            y_line = [pendiente * xi + intercepto for xi in x_line]
+            r2 = params.get("r2", 0)
+            ecuacion = _construir_ecuacion(params, x_label, r2)
+        elif indice is not None:
+            # Cociente: y = indice * x
+            y_line = [indice * xi for xi in x_line]
+            r2 = params.get("r2", 0)
+            ecuacion = f"y = {indice:.4f} × x<br>R² = {r2:.3f}"
+        else:
+            return
+
+        fig    = go.Figure()
+        layout = get_chart_layout()
+        layout["title"] = {
+            "text": f"Correlación: Consumo vs {x_label}",
+            "font": {"size": 15, "color": COLORS.text_primary},
+            "x": 0.5, "xanchor": "center",
+        }
+        layout["xaxis"]["title"]     = {"text": x_label}
+        layout["xaxis"]["tickangle"] = 0
+        layout["yaxis"]["title"]     = {"text": f"Consumo ({unidad})" if unidad else "Consumo"}
+        layout["margin"]             = {"l": 75, "r": 20, "t": 70, "b": 80}
+        layout["plot_bgcolor"]       = "#FAFAFA"
+        layout["hovermode"]          = "closest"
+        layout["legend"]             = {
+            "orientation": "h", "yanchor": "top", "y": -0.18,
+            "xanchor": "center", "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#E0E0E0", "borderwidth": 1,
+        }
+
+        # Puntos reales
+        hover_pts = [
+            f"{str(f)}<br>{x_label}: {xi:,.2f}<br>Consumo: {yi:,.0f} {unidad}"
+            for f, xi, yi in zip(fechas_h, x_arr, y_arr)
+        ]
+        fig.add_trace(go.Scatter(
+            x=x_arr, y=y_arr, mode="markers",
+            name="Datos históricos",
+            marker=dict(color="#2E86C1", size=9,
+                        line=dict(width=1.5, color="white")),
+            text=hover_pts,
+            hovertemplate="%{text}<extra></extra>",
+        ))
+
+        # Línea del modelo
+        fig.add_trace(go.Scatter(
+            x=x_line, y=y_line, mode="lines",
+            name="Modelo ajustado",
+            line=dict(color="#E74C3C", width=2.5),
+            hovertemplate=f"{x_label}: %{{x:,.2f}}<br>Modelo: %{{y:,.0f}} {unidad}<extra></extra>",
+        ))
+
+        # Anotación ecuación + R²
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.02, y=0.97, xanchor="left", yanchor="top",
+            text=ecuacion,
+            showarrow=False,
+            bgcolor="rgba(255,255,255,0.88)",
+            bordercolor="#D5D8DC", borderwidth=1,
+            borderpad=6,
+            font=dict(size=12, color=COLORS.text_primary, family=FONTS.family),
+        )
+
+        fig.update_layout(**layout)
+        self._render(fig)
+
+    # ── Gráfico 3-nuevo: LBEn vs línea meta de mejores desempeños ────────────
+
+    def plot_lben_vs_meta(self, resultado: dict, titulo_proyecto: str = ""):
+        """
+        Gráfico de barras horizontales por mes mostrando:
+          - LBEn mensual (azul)
+          - Meta de mejor desempeño (verde): el percentil 10 de los datos históricos
+            depurados por mes (o la mejor observación disponible).
+        Eje X = valor de consumo/índice. Eje Y = meses.
+        """
+        params   = resultado.get("modelo_params", {})
+        unidad   = resultado.get("unidad", "")
+        lben     = params.get("lben_mensual", {})
+
+        # Datos depurados para calcular la meta (mejor desempeño)
+        datos_dep  = params.get("datos_depurados", {})   # Modelo 1
+        coc_dep    = params.get("coc_depurados",   {})   # Modelo 2
+        fuente_dep = datos_dep if any(datos_dep.values()) else coc_dep
+
+        NOMBRES = ["Ene","Feb","Mar","Abr","May","Jun",
+                   "Jul","Ago","Sep","Oct","Nov","Dic"]
+
+        lben_vals = []
+        meta_vals = []
+        meses_lbl = []
+
+        import numpy as np
+        for mes in range(1, 13):
+            lb = lben.get(mes)
+            if lb is None:
+                continue
+            vals_dep = fuente_dep.get(mes, [])
+            if vals_dep:
+                # Mejor desempeño = percentil 10 (consumo más bajo depurado)
+                meta = float(np.percentile(vals_dep, 10))
+            else:
+                meta = lb * 0.90   # fallback: 10% mejor que LBEn
+
+            lben_vals.append(lb)
+            meta_vals.append(meta)
+            meses_lbl.append(NOMBRES[mes-1])
+
+        if not lben_vals:
+            return
+
+        fig    = go.Figure()
+        layout = get_chart_layout()
+        layout["title"] = {
+            "text": (f"LBEn vs Meta de mejores desempeños — {titulo_proyecto}"
+                     if titulo_proyecto else "LBEn vs Meta de mejores desempeños"),
+            "font": {"size": 15, "color": COLORS.text_primary},
+            "x": 0.5, "xanchor": "center",
+        }
+        layout["xaxis"]["title"]     = {"text": f"Consumo ({unidad})" if unidad else "Valor"}
+        layout["xaxis"]["tickangle"] = 0
+        layout["yaxis"]["title"]     = {"text": "Mes"}
+        layout["yaxis"]["autorange"] = "reversed"   # Ene arriba
+        layout["margin"]             = {"l": 60, "r": 20, "t": 70, "b": 70}
+        layout["plot_bgcolor"]       = "#FAFAFA"
+        layout["barmode"]            = "group"
+        layout["hovermode"]          = "y unified"
+        layout["legend"]             = {
+            "orientation": "h", "yanchor": "top", "y": -0.15,
+            "xanchor": "center", "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#E0E0E0", "borderwidth": 1,
+        }
+
+        # LBEn
+        fig.add_trace(go.Bar(
+            y=meses_lbl, x=lben_vals,
+            name="LBEn mensual",
+            orientation="h",
+            marker=dict(color="#1B4F72",
+                        line=dict(color="#154360", width=0.8)),
+            hovertemplate="<b>%{y}</b><br>LBEn: %{x:,.2f}<extra></extra>",
+            text=[f"{v:,.1f}" for v in lben_vals],
+            textposition="inside",
+            insidetextanchor="end",
+            textfont=dict(color="white", size=10),
+        ))
+
+        # Meta (mejor desempeño)
+        fig.add_trace(go.Bar(
+            y=meses_lbl, x=meta_vals,
+            name="Meta (mejor desempeño — percentil 10)",
+            orientation="h",
+            marker=dict(color="#1E8449",
+                        line=dict(color="#186A3B", width=0.8)),
+            hovertemplate="<b>%{y}</b><br>Meta: %{x:,.2f}<extra></extra>",
+            text=[f"{v:,.1f}" for v in meta_vals],
+            textposition="inside",
+            insidetextanchor="end",
+            textfont=dict(color="white", size=10),
+        ))
+
+        # Diferencia % como anotaciones en el margen derecho
+        x_max = max(max(lben_vals), max(meta_vals)) * 1.02
+        for i, (lb, mt, mes) in enumerate(zip(lben_vals, meta_vals, meses_lbl)):
+            diff_pct = (mt - lb) / lb * 100 if lb != 0 else 0
+            color_txt = "#27AE60" if diff_pct <= 0 else "#E74C3C"
+            fig.add_annotation(
+                x=x_max, y=mes,
+                text=f"{diff_pct:+.1f}%",
+                showarrow=False,
+                font=dict(size=10, color=color_txt, family=FONTS.family),
+                xanchor="left",
+            )
+
+        layout["xaxis"]["range"] = [0, x_max * 1.12]
+        fig.update_layout(**layout)
+        self._render(fig)
+
     # plot_dispersion eliminado — ya no se usa
 
 

@@ -98,6 +98,8 @@ class ResultadosPage(ctk.CTkFrame):
     # Scroll vertical:
     #   └─ advertencias (si hay)
     #   └─ gráfico histórico (puntos coloreados + LBEn + banda IC)
+    #   └─ [Gráfico 1] scatter consumos por año + LBEn ±10% (Modelos 1 y 2)
+    #   └─ [Gráfico 2] correlación consumo vs variable (Modelos 2 y 3)
     #   └─ tabla 12 LBEn mensuales
     # ══════════════════════════════════════════════════════════════════════════
     def _tab_linea_base(self, r, s):
@@ -114,10 +116,33 @@ class ResultadosPage(ctk.CTkFrame):
         if advertencias:
             self._bloque_advertencias(sv, advertencias)
 
-        # Gráfico histórico — puntos coloreados + LBEn + banda IC
-        g = ChartWidget(sv, height=480)
-        g.pack(fill="x", padx=12, pady=(12, 8))
-        g.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
+
+
+        modelo_id = getattr(s, "modelo_id", "promedio")
+
+        # ── Gráfico 1: Scatter consumos por año + LBEn ±10% (Modelos 1 y 2) ──
+        if modelo_id in ("promedio", "cociente"):
+            ctk.CTkLabel(sv, text="📊  Scatter consumos por mes — LBEn y límites ±10%",
+                         font=(FONTS.family, FONTS.size_sm, "bold"),
+                         text_color=COLORS.primary
+                         ).pack(anchor="w", padx=16, pady=(12, 2))
+            g = ChartWidget(sv, height=480)
+            g.pack(fill="x", padx=12, pady=(12, 8))
+            g.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
+
+        # ── Gráfico 2: Correlación consumo vs variable (Modelos 2 y 3) ───────
+        if modelo_id in ("cociente", "regresion"):
+            x_disp  = r.get("x_dispersion", [])
+            x_label = r.get("x_label", "")
+            if x_disp and x_label and x_label != "Período":
+                ctk.CTkLabel(sv,
+                             text=f"🔗  Correlación: Consumo vs {x_label}",
+                             font=(FONTS.family, FONTS.size_sm, "bold"),
+                             text_color=COLORS.primary
+                             ).pack(anchor="w", padx=16, pady=(12, 2))
+                g2 = ChartWidget(sv, height=400)
+                g2.pack(fill="x", padx=12, pady=(0, 8))
+                g2.plot_correlacion_variable(r)
 
         # Tabla 12 LBEn mensuales — COMPLETA (6 columnas) en ResultadosPage
         tabla_lben = r.get("tabla_lben_completa", [])
@@ -226,6 +251,7 @@ class ResultadosPage(ctk.CTkFrame):
     # TAB 2 — Desempeño
     # Scroll vertical:
     #   └─ gráfico barras desviación %
+    #   └─ [Gráfico 3] LBEn vs línea meta de mejores desempeños
     #   └─ tabla desempeño completa
     # ══════════════════════════════════════════════════════════════════════════
     def _tab_desempeno(self, r, s):
@@ -240,6 +266,18 @@ class ResultadosPage(ctk.CTkFrame):
         g = ChartWidget(sv, height=400)
         g.pack(fill="x", padx=12, pady=(12, 8))
         g.plot_desviacion(r)
+
+        # ── Gráfico 3: LBEn vs meta de mejores desempeños ────────────────────
+        params = r.get("modelo_params", {})
+        lben   = params.get("lben_mensual", {})
+        if lben and any(v is not None for v in lben.values()):
+            ctk.CTkLabel(sv, text="🎯  LBEn vs Meta de mejores desempeños",
+                         font=(FONTS.family, FONTS.size_sm, "bold"),
+                         text_color=COLORS.primary
+                         ).pack(anchor="w", padx=16, pady=(8, 2))
+            g3 = ChartWidget(sv, height=440)
+            g3.pack(fill="x", padx=12, pady=(0, 8))
+            g3.plot_lben_vs_meta(r, titulo_proyecto=s.nombre_proyecto or "")
 
         ctk.CTkLabel(sv, text="Tabla de desempeño",
                      font=(FONTS.family, FONTS.size_md, "bold"),

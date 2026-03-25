@@ -153,7 +153,9 @@ def calcular(
         "kpis":               kpis,
         "tabla_desempeno":    tabla,
         "columnas_desempeno": cols,
-        "modelo_params":      modelo.params,
+        "modelo_id":          modelo_id,   # identificador del modelo usado
+        "modelo_params":      {**modelo.params, "modelo_id": modelo_id,
+                               "x_hist": x_disp[:len(consumo_hist)]},
         # Tabla resumida 2 cols (Monitoreo) y completa 6 cols (ResultadosPage)
         "tabla_lben_mensual":    tabla_lben_m,
         "cols_lben_mensual":     cols_lben_m,

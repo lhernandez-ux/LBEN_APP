@@ -339,6 +339,12 @@ class MonitoreoPage(ctk.CTkFrame):
                                             text_color=COLORS.success)
         self.lbl_subida_ok.pack(anchor="w", padx=16)
 
+        self.progress_bar = ctk.CTkProgressBar(card, mode="indeterminate",
+                                               height=8, corner_radius=4,
+                                               progress_color=COLORS.accent)
+        self.progress_bar.pack(fill="x", padx=16, pady=(4, 0))
+        self.progress_bar.pack_forget()  # oculta al inicio
+
         self.lbl_subida_err = ctk.CTkLabel(card, text="",
                                             font=(FONTS.family, FONTS.size_xs),
                                             text_color=COLORS.error,
@@ -603,14 +609,20 @@ class MonitoreoPage(ctk.CTkFrame):
                             text="❌ Hoja Reporte — " + " | ".join(err_r))
                         return
                     self.lbl_subida_ok.configure(
-                        text=f"✅  {len(df_rep)} mes(es) de reporte cargados — calculando...",
+                        text=f"✅  {len(df_rep)} mes(es) de reporte cargados",
                         text_color=COLORS.success)
+                    # Mostrar barra de progreso indeterminada
+                    self.progress_bar.pack(fill="x", padx=16, pady=(4, 4))
+                    self.progress_bar.start()
                     self.update_idletasks()
             except Exception:
                 pass  # Sin hoja Reporte es válido
 
             resultado = calcular(df_hist, df_rep, modelo_id,
                                   col_consumo, vars_ind, nivel_conf)
+            # Ocultar barra de progreso al terminar
+            self.progress_bar.stop()
+            self.progress_bar.pack_forget()
             resultado["unidad"] = p.get("unidad_energia", "kWh")
             self._resultado = resultado
 
@@ -629,5 +641,6 @@ class MonitoreoPage(ctk.CTkFrame):
             self.app.show_page("ResultadosPage", desde="MonitoreoPage")
 
         except Exception as exc:
+            self.progress_bar.stop()
+            self.progress_bar.pack_forget()
             self.lbl_subida_err.configure(text=f"❌ Error: {exc}")
-
