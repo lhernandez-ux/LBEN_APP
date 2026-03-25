@@ -435,22 +435,34 @@ class ResultadosPage(ctk.CTkFrame):
         g2.plot_cusum(r)
 
     def _tabla_lben_simple(self, parent, r: dict):
-        """Tabla compacta para el panel lateral — LBEn (promedio) o índice (cociente)."""
-        filas = r.get("tabla_lben_mensual", [])
-        cols  = r.get("cols_lben_mensual", ["Mes", "LBEn"])
-        if not filas:
+        """Tabla compacta: Encuentra automáticamente la columna LBEn y la muestra junto al Mes."""
+        filas_raw = r.get("tabla_lben_mensual", [])
+        cols_raw = r.get("cols_lben_mensual", [])
+        
+        if not filas_raw or not cols_raw:
             ctk.CTkLabel(parent, text="Sin datos",
                          font=(FONTS.family, FONTS.size_xs),
                          text_color=COLORS.text_secondary).pack(pady=20)
             return
 
-        n_cols = len(cols) if cols else 2
+        # 1. Encontrar el índice de la columna que queremos (LBEn)
+        idx_lben = 1 # Valor por defecto
+        for i, nombre_col in enumerate(cols_raw):
+            # Buscamos "LBEn" pero ignoramos si dice "IC" (para no agarrar los intervalos)
+            if "LBEn" in nombre_col and "IC" not in nombre_col:
+                idx_lben = i
+                break
+
+        # 2. Configurar encabezados visuales (siempre 2 columnas)
+        modelo_id = r.get("modelo_id", "promedio")
+        txt_valor = "LBEn" if "promedio" in modelo_id else "Índice"
+        display_cols = ["Mes", txt_valor]
+
         tbl = ctk.CTkFrame(parent, fg_color="transparent")
         tbl.pack(fill="x", padx=6, pady=4)
-        for c in range(n_cols):
-            tbl.grid_columnconfigure(c, weight=1)
+        tbl.grid_columnconfigure((0, 1), weight=1)
 
-        for c, txt in enumerate(cols):
+        for c, txt in enumerate(display_cols):
             h = ctk.CTkFrame(tbl, fg_color=COLORS.primary, corner_radius=4, height=30)
             h.grid(row=0, column=c, sticky="ew", padx=1, pady=(0, 2))
             h.grid_propagate(False)
@@ -459,26 +471,29 @@ class ResultadosPage(ctk.CTkFrame):
                          text_color="white"
                          ).place(relx=0.5, rely=0.5, anchor="center")
 
-        for ri, fila in enumerate(filas):
-            fila = list(fila) if not isinstance(fila, list) else fila
-            mes = fila[0] if fila else ""
-            lben_val = fila[1] if len(fila) > 1 else ""
+        # 3. Renderizar filas
+        for ri, fila in enumerate(filas_raw):
+            mes = fila[0]
+            # Usamos el índice encontrado dinámicamente
+            val_display = fila[idx_lben] if len(fila) > idx_lben else "—"
+            
             bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
-            sin = str(lben_val) == "Sin datos"
-            if sin: bg = "#F0F0F0"
+            sin = str(val_display) in ("Sin datos", "—", "")
 
+            # Celda Mes
             cm = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=28)
             cm.grid(row=ri+1, column=0, sticky="ew", padx=(1, 0), pady=1)
             cm.grid_propagate(False)
-            ctk.CTkLabel(cm, text=mes,
+            ctk.CTkLabel(cm, text=str(mes),
                          font=(FONTS.family, FONTS.size_xs, "bold"),
                          text_color=COLORS.text_primary
                          ).place(relx=0.08, rely=0.5, anchor="w")
 
+            # Celda Valor (Ajustado al índice amarillo de tu imagen)
             cl = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=28)
             cl.grid(row=ri+1, column=1, sticky="ew", padx=(0, 1), pady=1)
             cl.grid_propagate(False)
-            ctk.CTkLabel(cl, text=str(lben_val),
+            ctk.CTkLabel(cl, text=str(val_display),
                          font=(FONTS.family, FONTS.size_xs),
                          text_color=COLORS.accent if not sin else COLORS.text_secondary
                          ).place(relx=0.92, rely=0.5, anchor="e")
