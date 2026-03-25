@@ -6,6 +6,20 @@ import re
 import pandas as pd
 
 
+# Patrón para detectar la columna de Ajuste No Rutinario (ANR).
+# Se usa aquí para NO convertirla a numérico, ya que contiene texto libre.
+_PATRON_COL_ANR = re.compile(
+    r"ajuste.?nr|ajustenr|\banr\b|anomal[íi]a?|anomalo?|"
+    r"mes.?anomal|no.?rutinario|rutinario",
+    re.IGNORECASE,
+)
+
+
+def _es_columna_anr(nombre: str) -> bool:
+    """True si el nombre de columna corresponde a la columna de marcado ANR."""
+    return bool(_PATRON_COL_ANR.search(nombre.strip()))
+
+
 def leer_excel(path: str, hoja: str = None) -> pd.DataFrame:
     """
     hoja: nombre exacto de la hoja ('Histórico', 'Reporte').
@@ -22,9 +36,14 @@ def leer_excel(path: str, hoja: str = None) -> pd.DataFrame:
     df = df.dropna(how="all").reset_index(drop=True)
 
     # Normaliza números (europeo 45.200,00 → 45200.0)
+    # EXCEPCIÓN: columnas ANR se dejan como texto — contienen motivos escritos por el usuario
     col_fecha = df.columns[0]
     for col in df.columns:
         if col == col_fecha:
+            continue
+        if _es_columna_anr(col):
+            # Preservar como texto; reemplazar NaN por cadena vacía para facilitar comparación
+            df[col] = df[col].fillna("").astype(str).str.strip()
             continue
         if df[col].dtype == object:
             limpio = (df[col].astype(str).str.strip()

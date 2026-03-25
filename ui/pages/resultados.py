@@ -11,7 +11,7 @@ import customtkinter as ctk
 from ui.theme import COLORS, FONTS, SIZES
 from ui.components.chart_widget import ChartWidget
 
-TABS = ["📈 Línea base", "📊 Desempeño", "📡 Seguimiento"]
+TABS = ["📈 Línea base", "📊 Desempeño", "📡 Seguimiento", "🔧 Ajuste NR"]
 
 
 class ResultadosPage(ctk.CTkFrame):
@@ -89,6 +89,7 @@ class ResultadosPage(ctk.CTkFrame):
         self._tab_linea_base(r, s)
         self._tab_desempeno(r, s)
         self._tab_seguimiento(r, s)
+        self._tab_ajuste_nr(r, s)
         # Si viene de monitoreo, abrir directamente la pestaña de seguimiento
         if getattr(self, "_desde", None) == "MonitoreoPage":
             self.tabs.set("📡 Seguimiento")
@@ -116,19 +117,14 @@ class ResultadosPage(ctk.CTkFrame):
         if advertencias:
             self._bloque_advertencias(sv, advertencias)
 
-
-
         modelo_id = getattr(s, "modelo_id", "promedio")
 
         # ── Gráfico 1: Scatter consumos por año + LBEn ±10% (Modelos 1 y 2) ──
         if modelo_id in ("promedio", "cociente"):
-            ctk.CTkLabel(sv, text="📊  Scatter consumos por mes — LBEn y límites ±10%",
-                         font=(FONTS.family, FONTS.size_sm, "bold"),
-                         text_color=COLORS.primary
-                         ).pack(anchor="w", padx=16, pady=(12, 2))
-            g = ChartWidget(sv, height=480)
-            g.pack(fill="x", padx=12, pady=(12, 8))
-            g.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
+                    g = ChartWidget(sv, height=480)
+        g.pack(fill="x", padx=12, pady=(12, 8))
+        g.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
+
 
         # ── Gráfico 2: Correlación consumo vs variable (Modelos 2 y 3) ───────
         if modelo_id in ("cociente", "regresion"):
@@ -580,3 +576,149 @@ class ResultadosPage(ctk.CTkFrame):
             return
         from core.exportador import exportar_informe
         exportar_informe(path, self.app.sesion.resultado, self.app.sesion)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 4 — Ajuste No Rutinario (ANR)
+    # ══════════════════════════════════════════════════════════════════════════
+    def _tab_ajuste_nr(self, r, s):
+        tab = self.tabs.tab("🔧 Ajuste NR")
+        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_columnconfigure(0, weight=1)
+
+        sv = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+        sv.grid(row=0, column=0, sticky="nsew")
+        sv.grid_columnconfigure(0, weight=1)
+
+        hay_anr  = r.get("hay_anr", False)
+        resumen  = r.get("resumen_anr", {})
+
+        # ── Sin ajuste NR ─────────────────────────────────────────────────────
+        if not hay_anr or not resumen:
+            msg = ctk.CTkFrame(sv, fg_color=COLORS.bg_card,
+                               corner_radius=10, border_width=1,
+                               border_color=COLORS.border)
+            msg.pack(fill="x", padx=12, pady=40)
+            ctk.CTkLabel(msg,
+                         text="✅  Sin ajuste no rutinario aplicado",
+                         font=(FONTS.family, FONTS.size_md, "bold"),
+                         text_color=COLORS.primary
+                         ).pack(pady=(24, 6))
+            ctk.CTkLabel(msg,
+                         text=(
+                             "No se encontró la columna 'Ajuste_NR' en los datos, "
+                             "o no se marcaron meses anómalos.\n"
+                             "Para activar el ANR, agrega la columna 'Ajuste_NR' en "
+                             "la hoja Histórico del Excel\n"
+                             "y escribe el motivo en los meses que quieras corregir "
+                             "(ej: 'mantenimiento', 'falla eléctrica')."
+                         ),
+                         font=(FONTS.family, FONTS.size_sm),
+                         text_color=COLORS.text_secondary,
+                         justify="center",
+                         wraplength=600,
+                         ).pack(pady=(0, 24))
+            return
+
+        # ── KPIs ANR ──────────────────────────────────────────────────────────
+        n_marcados  = resumen.get("n_meses_marcados", 0)
+        n_ajustados = resumen.get("n_ajustados", 0)
+        n_no_ajust  = resumen.get("n_no_ajustados", 0)
+        años        = resumen.get("años_afectados", [])
+
+        kpi_card = ctk.CTkFrame(sv, fg_color=COLORS.bg_card,
+                                corner_radius=10, border_width=1,
+                                border_color=COLORS.border)
+        kpi_card.pack(fill="x", padx=12, pady=(12, 8))
+        kpi_card.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        kpis = [
+            (str(n_marcados),  "Meses marcados",    COLORS.warning),
+            (str(n_ajustados), "Meses ajustados",   COLORS.accent),
+            (str(n_no_ajust),  "Sin ajuste posible",
+             COLORS.error if n_no_ajust else COLORS.text_secondary),
+            (", ".join(str(a) for a in años) or "—",
+             "Años afectados", COLORS.primary),
+        ]
+        for col, (val, lbl, color) in enumerate(kpis):
+            f = ctk.CTkFrame(kpi_card, fg_color="transparent")
+            f.grid(row=0, column=col, padx=12, pady=12, sticky="ew")
+            ctk.CTkLabel(f, text=val,
+                         font=(FONTS.family, FONTS.size_xl, "bold"),
+                         text_color=color).pack()
+            ctk.CTkLabel(f, text=lbl,
+                         font=(FONTS.family, FONTS.size_xs),
+                         text_color=COLORS.text_secondary).pack()
+
+
+        # ── Tabla de detalle ──────────────────────────────────────────────────
+        detalle = resumen.get("detalle", [])
+        if detalle:
+            ctk.CTkLabel(sv, text="📋  Detalle de ajustes por mes",
+                         font=(FONTS.family, FONTS.size_sm, "bold"),
+                         text_color=COLORS.primary
+                         ).pack(anchor="w", padx=16, pady=(8, 4))
+            self._card_tabla_anr(sv, detalle)
+
+    def _card_tabla_anr(self, parent, detalle: list):
+        """Tabla de detalle: un registro por mes marcado."""
+        card = ctk.CTkFrame(parent, fg_color=COLORS.bg_card,
+                             corner_radius=10, border_width=1,
+                             border_color=COLORS.border)
+        card.pack(fill="x", padx=12, pady=(0, 20))
+
+        cols = ["Período", "Motivo", "Prom. normales",
+                "Prom. anómalos", "Proporción", "Original", "Ajustado", "Δ (%)"]
+        tbl = ctk.CTkFrame(card, fg_color="transparent")
+        tbl.pack(fill="x", padx=12, pady=12)
+        for c in range(len(cols)):
+            tbl.grid_columnconfigure(c, weight=1)
+
+        # Encabezados
+        for ci, col in enumerate(cols):
+            h = ctk.CTkFrame(tbl, fg_color=COLORS.primary,
+                             corner_radius=0, height=34)
+            h.grid(row=0, column=ci, sticky="ew", padx=1, pady=(0, 2))
+            h.grid_propagate(False)
+            ctk.CTkLabel(h, text=col,
+                         font=(FONTS.family, FONTS.size_xs, "bold"),
+                         text_color="white"
+                         ).place(relx=0.5, rely=0.5, anchor="center")
+
+        # Filas
+        for ri, rec in enumerate(detalle):
+            ajustado = rec.get("ajustado", False)
+            bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
+            if not ajustado:
+                bg = "#FFF3CD"   # amarillo advertencia
+
+            fila = [
+                rec.get("fecha", "—"),
+                rec.get("motivo", "—"),
+                f'{rec["prom_normales"]:,.2f}'  if "prom_normales" in rec else "—",
+                f'{rec["prom_anomalos"]:,.2f}'  if "prom_anomalos" in rec else "—",
+                f'{rec["proporcion"]*100:+.2f}%' if "proporcion" in rec else "—",
+                f'{rec["valor_original"]:,.2f}',
+                f'{rec["valor_ajustado"]:,.2f}' if ajustado else "Sin ajuste",
+                f'{rec["delta_pct"]:+.1f}%'     if "delta_pct" in rec else "—",
+            ]
+            for ci, val in enumerate(fila):
+                cell = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=30)
+                cell.grid(row=ri + 1, column=ci,
+                          sticky="ew", padx=1, pady=1)
+                cell.grid_propagate(False)
+
+                # Color especial para Δ (%)
+                color = COLORS.text_primary
+                if ci == 7 and ajustado:
+                    try:
+                        v = float(str(val).replace("%", "").replace("+", ""))
+                        color = COLORS.improvement if v <= 0 else COLORS.degradation
+                    except ValueError:
+                        pass
+                if not ajustado and ci == 6:
+                    color = COLORS.warning
+
+                ctk.CTkLabel(cell, text=str(val),
+                             font=(FONTS.family, FONTS.size_xs),
+                             text_color=color
+                             ).place(relx=0.5, rely=0.5, anchor="center")

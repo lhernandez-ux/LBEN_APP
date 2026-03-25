@@ -661,6 +661,109 @@ class ChartWidget(ctk.CTkFrame):
         fig.update_layout(**layout)
         self._render(fig)
 
+
+    # ── Gráfico ANR: Comparación original vs ajustado ────────────────────────
+
+    def plot_ajuste_no_rutinario(self, resultado: dict):
+        """
+        Gráfico de auditoría del Ajuste No Rutinario.
+        Línea gris = consumo original; línea azul = consumo ajustado.
+        Puntos naranjas = meses anómalos corregidos.
+        """
+        resumen     = resultado.get("resumen_anr", {})
+        detalle     = resumen.get("detalle", [])
+        fechas_hist = resultado.get("fechas_hist_original", [])
+        consumo_orig = resultado.get("consumo_hist_original", [])
+        consumo_ajust = resultado.get("consumo_hist", [])
+        unidad = resultado.get("unidad", "")
+
+        if not fechas_hist or not consumo_orig:
+            return
+
+        # Construir set de fechas anómalas para colorear
+        fechas_anom = {r["fecha"] for r in detalle if r.get("ajustado")}
+
+        fig    = go.Figure()
+        layout = get_chart_layout()
+        layout["title"] = {
+            "text": "Ajuste No Rutinario — Original vs Ajustado",
+            "font": {"size": 15, "color": COLORS.text_primary},
+            "x": 0.5, "xanchor": "center",
+        }
+        layout["xaxis"]["title"]     = {"text": "Período"}
+        layout["xaxis"]["tickangle"] = -45
+        layout["yaxis"]["title"]     = {"text": f"Consumo ({unidad})" if unidad else "Consumo"}
+        layout["margin"]             = {"l": 75, "r": 20, "t": 70, "b": 100}
+        layout["plot_bgcolor"]       = "#FAFAFA"
+        layout["legend"]             = {
+            "orientation": "h", "yanchor": "top", "y": -0.25,
+            "xanchor": "center", "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#E0E0E0", "borderwidth": 1,
+        }
+
+        fechas_str = [str(f) for f in fechas_hist]
+
+        # Línea original (gris)
+        fig.add_trace(go.Scatter(
+            x=fechas_str, y=consumo_orig,
+            mode="lines+markers",
+            name="Consumo original",
+            line=dict(color="#95A5A6", width=2, dash="dash"),
+            marker=dict(color="#95A5A6", size=6),
+            hovertemplate="<b>%{x}</b><br>Original: %{y:,.2f}<extra></extra>",
+        ))
+
+        # Línea ajustada (azul)
+        fig.add_trace(go.Scatter(
+            x=fechas_str, y=consumo_ajust,
+            mode="lines+markers",
+            name="Consumo ajustado (ANR)",
+            line=dict(color="#2E86C1", width=2.5),
+            marker=dict(color="#2E86C1", size=6,
+                        line=dict(width=1.5, color="white")),
+            hovertemplate="<b>%{x}</b><br>Ajustado: %{y:,.2f}<extra></extra>",
+        ))
+
+        # Puntos naranjas sobre los meses anómalos (valor ajustado)
+        x_anom, y_anom_orig, y_anom_ajust, hover_anom = [], [], [], []
+        anom_dict = {r["fecha"]: r for r in detalle if r.get("ajustado")}
+        for f_str, c_orig, c_ajust in zip(fechas_str, consumo_orig, consumo_ajust):
+            if f_str in anom_dict:
+                r = anom_dict[f_str]
+                x_anom.append(f_str)
+                y_anom_orig.append(c_orig)
+                y_anom_ajust.append(c_ajust)
+                hover_anom.append(
+                    f"<b>{f_str}</b> — {r['motivo']}<br>"
+                    f"Original: {r['valor_original']:,.2f}<br>"
+                    f"Ajustado: {r['valor_ajustado']:,.2f}<br>"
+                    f"Δ = {r['delta_pct']:+.1f}%"
+                )
+
+        if x_anom:
+            # Flechas: segmentos verticales de orig → ajust
+            for i, (x_a, y_o, y_a) in enumerate(zip(x_anom, y_anom_orig, y_anom_ajust)):
+                fig.add_shape(
+                    type="line",
+                    x0=x_a, x1=x_a, y0=y_o, y1=y_a,
+                    line=dict(color="#E67E22", width=1.5, dash="dot"),
+                )
+
+            # Punto en valor ajustado
+            fig.add_trace(go.Scatter(
+                x=x_anom, y=y_anom_ajust,
+                mode="markers",
+                name="Mes anómalo (corregido)",
+                marker=dict(color="#E67E22", size=12, symbol="diamond",
+                            line=dict(width=2, color="white")),
+                text=hover_anom,
+                hovertemplate="%{text}<extra></extra>",
+            ))
+
+        fig.update_layout(**layout)
+        self._render(fig)
+
     # ── Gráfico 1-nuevo: Scatter consumos por año + LBEn promedio + límites ±10% ──
     # Aplica a Modelos 1 (promedio) y 2 (cociente)
 
@@ -775,7 +878,7 @@ class ChartWidget(ctk.CTkFrame):
             sup10 = [v * 1.10 if v is not None else None for v in lben_clean]
             fig.add_trace(go.Scatter(
                 x=NOMBRES, y=sup10, mode="lines",
-                name="IC superior +10%",
+                name="LBEn +10%",
                 line=dict(color="#E67E22", width=1.8, dash="dot"),
                 hovertemplate="<b>%{x}</b><br>+10%%: %{y:,.2f}<extra></extra>",
             ))
@@ -784,7 +887,7 @@ class ChartWidget(ctk.CTkFrame):
             inf10 = [v * 0.90 if v is not None else None for v in lben_clean]
             fig.add_trace(go.Scatter(
                 x=NOMBRES, y=inf10, mode="lines",
-                name="IC inferior -10%",
+                name="LBEn −10%",
                 line=dict(color="#27AE60", width=1.8, dash="dot"),
                 fill="tonexty",
                 fillcolor="rgba(39,174,96,0.06)",

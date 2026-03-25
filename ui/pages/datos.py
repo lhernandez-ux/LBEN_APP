@@ -79,6 +79,11 @@ class DatosPage(ctk.CTkFrame):
                                          text_color=COLORS.text_secondary)
         self.lbl_archivo.pack(anchor="w", pady=(0, 8))
 
+        self.lbl_anr_info = ctk.CTkLabel(body, text="",
+                                          font=(FONTS.family, FONTS.size_sm, "bold"),
+                                          text_color=COLORS.warning)
+        # Se muestra solo si hay ANR detectado
+
         # ── Previews de las dos hojas ──────────────────────────────────────────
         # Histórico
         self.prev_hist = self._make_preview(body, "Histórico — primeras 5 filas")
@@ -175,6 +180,25 @@ class DatosPage(ctk.CTkFrame):
                      + ")",
                 text_color=COLORS.success,
             )
+
+            # ── Resumen ANR en carga ──────────────────────────────────────────
+            from core.ajuste_no_rutinario import aplicar_ajuste_no_rutinario, resumen_anr
+            _, log_anr, hay_anr = aplicar_ajuste_no_rutinario(
+                df_hist, s.col_consumo
+            )
+            if hay_anr:
+                res = resumen_anr(log_anr)
+                self.lbl_anr_info.configure(
+                    text=(
+                        f"⚙  Ajuste No Rutinario detectado: "
+                        f"{res['n_ajustados']} mes(es) serán corregidos "
+                        f"(años: {', '.join(str(a) for a in res['años_afectados'])})"
+                    ),
+                    text_color=COLORS.warning,
+                )
+                self.lbl_anr_info.pack(anchor="w", pady=(0, 4))
+            else:
+                self.lbl_anr_info.pack_forget()
 
             if errores:
                 self.error_lbl.configure(text="⚠  " + "\n".join(errores))

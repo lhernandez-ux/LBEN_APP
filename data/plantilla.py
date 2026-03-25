@@ -18,6 +18,7 @@ _FILL_C  = PatternFill("solid", fgColor="1E8449")
 _FILL_V  = PatternFill("solid", fgColor="154360")
 _FILL_P  = PatternFill("solid", fgColor="EBF5FB")
 _FILL_I  = PatternFill("solid", fgColor="FFFFFF")
+_FILL_ANR = PatternFill("solid", fgColor="FEF9E7")  # columna Ajuste_NR
 _FILL_FD = PatternFill("solid", fgColor="D6EAF8")   # celda fecha histórico
 _FILL_RD = PatternFill("solid", fgColor="FEF9E7")   # celda fecha reporte
 _FW  = Font(bold=True, color="FFFFFF", size=11)
@@ -38,7 +39,8 @@ def generar_plantilla(path, modelo_id, col_consumo, vars_independientes,
                         fechas_historico, fechas_reporte)
     _hoja_datos(wb, "Histórico", col_consumo, vars_independientes,
                 fechas_historico or [], unidad, _FILL_FH, _FILL_FD, _FH,
-                "Período histórico — para ajustar el modelo (línea base)")
+                "Período histórico — para ajustar el modelo (línea base)",
+                incluir_anr=True)
     if fechas_reporte:
         _hoja_datos(wb, "Reporte", col_consumo, vars_independientes,
                     fechas_reporte, unidad, _FILL_FR, _FILL_RD, _FRF,
@@ -80,20 +82,29 @@ def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
     lineas = [
         "1. Hoja 'Histórico': llena los datos del período de referencia.",
         "   Las fechas ya están precargadas. Solo completa los valores numéricos.",
-        "2. Hoja 'Reporte' (si existe): llena los datos del período a evaluar.",
+        "2. Columna 'Ajuste_NR' (Hoja Histórico): OPCIONAL.",
+        "   Escribe el motivo si un mes es anómalo (ej: 'mantenimiento', 'falla').",
+        "   Deja en blanco si el mes es normal.",
+        "   Los meses marcados se corregirán automáticamente antes de calcular.",
+        "3. Hoja 'Reporte' (si existe): llena los datos del período a evaluar.",
         "   La herramienta comparará estos datos con la línea base calculada.",
-        "3. No elimines ni renombres las columnas.",
-        "4. No dejes celdas numéricas vacías dentro del rango.",
+        "4. No elimines ni renombres las columnas.",
+        "5. No dejes celdas numéricas vacías dentro del rango.",
     ]
     for i, l in enumerate(lineas, start=10):
         ws[f"A{i}"] = l; ws[f"A{i}"].font = Font(size=10)
 
 
 def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
-                unidad, fill_hdr_fecha, fill_celda_fecha, font_fecha, titulo):
+                unidad, fill_hdr_fecha, fill_celda_fecha, font_fecha, titulo,
+                incluir_anr=False):
     ws = wb.create_sheet(nombre_hoja)
     columnas = ["Fecha", col_consumo] + vars_ind
+    if incluir_anr:
+        columnas += ["Ajuste_NR"]
     fills_hdr = [fill_hdr_fecha, _FILL_C] + [_FILL_V] * len(vars_ind)
+    if incluir_anr:
+        fills_hdr += [PatternFill("solid", fgColor="B7950B")]
 
     # Fila 1: título de la hoja
     ws.merge_cells(f"A1:{get_column_letter(len(columnas))}1")
@@ -110,23 +121,31 @@ def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
         ws.column_dimensions[get_column_letter(j)].width = 20
 
     # Fila 3: hints
-    hints = ["(automático)", f"Consumo en {unidad}"] + [f"Variable {i+1}" for i in range(len(vars_ind))]
+    anr_cols = (["¿Mes anómalo? (motivo)"] if incluir_anr else [])
+    hints = ["(automático)", f"Consumo en {unidad}"] + [f"Variable {i+1}" for i in range(len(vars_ind))] + anr_cols
     for j, h in enumerate(hints, start=1):
         c = ws.cell(row=3, column=j, value=h)
         c.font = Font(italic=True, color="999999", size=9)
         c.alignment = _AC; c.border = _B
 
     # Filas de datos
+    n_data_cols = len(columnas)
     for i, f in enumerate(fechas):
         r = i + 4
         bg = _FILL_P if i % 2 == 0 else _FILL_I
-        for j in range(1, len(columnas) + 1):
+        for j in range(1, n_data_cols + 1):
             c = ws.cell(row=r, column=j)
             c.border = _B; c.alignment = _AC
+            col_name = columnas[j - 1]
             if j == 1:
                 c.value = _fmt(f)
                 c.fill = fill_celda_fecha
                 c.font = font_fecha
+            elif col_name == "Ajuste_NR":
+                c.fill = _FILL_ANR
+                # Validation list: empty (normal) or text
+                c.value = ""
+                c.alignment = Alignment(horizontal="left", vertical="center")
             else:
                 c.fill = bg
                 c.number_format = "#,##0.00"

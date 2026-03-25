@@ -42,10 +42,17 @@ def calcular(
     if modelo_id not in MODELOS:
         raise ValueError(f"Modelo desconocido: {modelo_id}")
 
-    # ── 1. Ajuste del modelo con datos históricos ─────────────────────────────
+    # ── 0. Ajuste No Rutinario (ANR) — antes de cualquier cálculo ────────────
+    from core.ajuste_no_rutinario import aplicar_ajuste_no_rutinario, resumen_anr
+    df_hist_anr, log_anr, hay_anr = aplicar_ajuste_no_rutinario(
+        df_historico, col_consumo
+    )
+    resumen_anr_dict = resumen_anr(log_anr) if hay_anr else {}
+
+    # ── 1. Ajuste del modelo con datos históricos (ya depurados por ANR) ──────
     ModeloClass = MODELOS[modelo_id]
     modelo = ModeloClass(
-        df=df_historico,
+        df=df_hist_anr,
         col_consumo=col_consumo,
         vars_independientes=vars_independientes,
         nivel_confianza=nivel_confianza,
@@ -58,6 +65,12 @@ def calcular(
     lb_hist        = modelo.linea_base
     ic_sup_hist    = modelo.ic_superior
     ic_inf_hist    = modelo.ic_inferior
+
+    # Consumo original sin ANR (para gráfico de auditoría)
+    consumo_hist_original = (
+        df_historico[col_consumo].astype(float).tolist()
+        if hay_anr else []
+    )
 
     # ── 2. Predicciones para el período de reporte (si existe) ────────────────
     if df_reporte is not None and len(df_reporte) > 0:
@@ -162,6 +175,11 @@ def calcular(
         "tabla_lben_completa":   tabla_lben_c,
         "cols_lben_completa":    cols_lben_c,
         "advertencias_modelo":   getattr(modelo, "advertencias", []),
+        # Ajuste No Rutinario
+        "hay_anr":              hay_anr,
+        "resumen_anr":          resumen_anr_dict,
+        "consumo_hist_original": consumo_hist_original,
+        "fechas_hist_original":  fechas_hist if hay_anr else [],
     }
 
 
@@ -305,7 +323,6 @@ def _construir_tabla_lben_completa(modelo_params: dict) -> tuple:
             f"{ic_vals[1]:,.2f}" if ic_vals[1] is not None else "—",
         ])
     return filas, cols
-
 
 
 def _construir_tabla_indice_cociente(modelo_params, vars_ind, fechas, consumo, lb):
