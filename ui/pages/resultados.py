@@ -121,10 +121,13 @@ class ResultadosPage(ctk.CTkFrame):
 
         # ── Gráfico 1: Scatter consumos por año + LBEn ±10% (Modelos 1 y 2) ──
         if modelo_id in ("promedio", "cociente"):
-                    g = ChartWidget(sv, height=480)
-        g.pack(fill="x", padx=12, pady=(12, 8))
-        g.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
-
+            ctk.CTkLabel(sv, text="📊  Scatter consumos por mes — LBEn y límites ±10%",
+                         font=(FONTS.family, FONTS.size_sm, "bold"),
+                         text_color=COLORS.primary
+                         ).pack(anchor="w", padx=16, pady=(12, 2))
+            g1 = ChartWidget(sv, height=420)
+            g1.pack(fill="x", padx=12, pady=(0, 8))
+            g1.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
 
         # ── Gráfico 2: Correlación consumo vs variable (Modelos 2 y 3) ───────
         if modelo_id in ("cociente", "regresion"):
@@ -139,6 +142,10 @@ class ResultadosPage(ctk.CTkFrame):
                 g2 = ChartWidget(sv, height=400)
                 g2.pack(fill="x", padx=12, pady=(0, 8))
                 g2.plot_correlacion_variable(r)
+
+        # ── Diagnósticos estadísticos (solo Modelo 3 — Regresión) ────────────
+        if modelo_id == "regresion":
+            self._card_diagnosticos_regresion(sv, r)
 
         # Tabla 12 LBEn mensuales — COMPLETA (6 columnas) en ResultadosPage
         tabla_lben = r.get("tabla_lben_completa", [])
@@ -649,7 +656,6 @@ class ResultadosPage(ctk.CTkFrame):
                          font=(FONTS.family, FONTS.size_xs),
                          text_color=COLORS.text_secondary).pack()
 
-
         # ── Tabla de detalle ──────────────────────────────────────────────────
         detalle = resumen.get("detalle", [])
         if detalle:
@@ -722,3 +728,261 @@ class ResultadosPage(ctk.CTkFrame):
                              font=(FONTS.family, FONTS.size_xs),
                              text_color=color
                              ).place(relx=0.5, rely=0.5, anchor="center")
+    # ══════════════════════════════════════════════════════════════════════════
+    # Diagnósticos del Modelo Estadístico de Regresión
+    # ══════════════════════════════════════════════════════════════════════════
+    def _card_diagnosticos_regresion(self, parent, r: dict):
+        """
+        Tarjeta con todos los diagnósticos estadísticos del modelo de regresión:
+          - Ecuación ajustada
+          - R², R² ajustado, RMSE, CV(RMSE)
+          - F-estadístico y su p-valor
+          - Tabla por variable: coeficiente, t-estadístico, p-valor, VIF
+          - AIC y BIC
+        """
+        params = r.get("modelo_params", {})
+        if not params.get("coeficientes"):
+            return
+
+        coefs     = params.get("coeficientes", {})
+        r2        = params.get("r2", 0)
+        r2_adj    = params.get("r2_ajustado", 0)
+        rmse      = params.get("rmse", 0)
+        cv_rmse   = params.get("cv_rmse", 0)
+        f_stat    = params.get("f_estadistico", 0)
+        p_valor_f = params.get("p_valor_f", 1)
+        p_vals    = params.get("p_valores", {})
+        t_vals    = params.get("t_estadisticos", {})
+        vif       = params.get("vif", {})
+        aic       = params.get("aic", 0)
+        bic       = params.get("bic", 0)
+        n         = params.get("n", 0)
+        k         = params.get("k", 0)
+        unidad    = r.get("unidad", "")
+        vars_ind  = [c for c in coefs if c != "Intercepto"]
+
+        # ── Tarjeta contenedora ───────────────────────────────────────────────
+        card = ctk.CTkFrame(parent, fg_color=COLORS.bg_card,
+                            corner_radius=10, border_width=1,
+                            border_color=COLORS.border)
+        card.pack(fill="x", padx=12, pady=(4, 12))
+
+        ctk.CTkLabel(card,
+                     text="📐  Diagnósticos del Modelo Estadístico — Regresión Lineal",
+                     font=(FONTS.family, FONTS.size_sm, "bold"),
+                     text_color=COLORS.primary
+                     ).pack(anchor="w", padx=16, pady=(14, 2))
+
+        # ── Ecuación ajustada ─────────────────────────────────────────────────
+        ec_partes = [f"{coefs.get('Intercepto', 0):,.2f}"]
+        for var in vars_ind:
+            c = coefs[var]
+            signo = "+" if c >= 0 else "−"
+            ec_partes.append(f"{signo} {abs(c):,.2f} · {var}")
+        ec_txt = "LBEn  =  " + "  ".join(ec_partes)
+
+        ec_frame = ctk.CTkFrame(card, fg_color=COLORS.primary_light,
+                                corner_radius=6)
+        ec_frame.pack(fill="x", padx=16, pady=(4, 12))
+        ctk.CTkLabel(ec_frame, text=ec_txt,
+                     font=(FONTS.family_mono, FONTS.size_sm, "bold"),
+                     text_color=COLORS.primary,
+                     wraplength=860, justify="left"
+                     ).pack(anchor="w", padx=14, pady=8)
+
+        # ── Dos columnas: métricas globales | tabla por variable ──────────────
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(fill="x", padx=16, pady=(0, 16))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=2)
+
+        # ─ Columna izquierda: métricas globales ──────────────────────────────
+        izq = ctk.CTkFrame(body, fg_color=COLORS.bg_main,
+                           corner_radius=8, border_width=1,
+                           border_color=COLORS.border)
+        izq.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(izq, text="Métricas globales",
+                     font=(FONTS.family, FONTS.size_xs, "bold"),
+                     text_color=COLORS.primary
+                     ).pack(anchor="w", padx=12, pady=(10, 6))
+
+        def _color_metrica(val, umbral_bueno, umbral_malo, inverso=False):
+            if not inverso:
+                if val >= umbral_bueno: return COLORS.improvement
+                if val >= umbral_malo:  return COLORS.warning
+                return COLORS.degradation
+            else:
+                if val <= umbral_bueno: return COLORS.improvement
+                if val <= umbral_malo:  return COLORS.warning
+                return COLORS.degradation
+
+        metricas = [
+            ("R²",
+             f"{r2:.4f}",
+             _color_metrica(r2, 0.90, 0.75),
+             "≥ 0.75 recomendado"),
+            ("R² ajustado",
+             f"{r2_adj:.4f}",
+             _color_metrica(r2_adj, 0.85, 0.75),
+             "Penaliza vars. innecesarias"),
+            ("RMSE",
+             f"{rmse:,.2f} {unidad}".strip(),
+             COLORS.text_primary,
+             "Error cuadrático medio"),
+            ("CV(RMSE)",
+             f"{cv_rmse:.2f}%",
+             _color_metrica(cv_rmse, 0, 20, inverso=True),
+             "≤ 20% recomendado"),
+            ("F-estadístico",
+             f"{f_stat:.1f}",
+             COLORS.improvement if p_valor_f < 0.05 else COLORS.degradation,
+             f"p-valor = {p_valor_f:.4f}"),
+            ("N períodos",
+             f"{n}  (k={k})",
+             COLORS.text_primary,
+             "Mín. 3 obs. por variable"),
+            ("AIC",
+             f"{aic:.1f}",
+             COLORS.text_primary,
+             "Criterio de información"),
+            ("BIC",
+             f"{bic:.1f}",
+             COLORS.text_primary,
+             "Criterio de información"),
+        ]
+
+        for metrica, valor, color, nota in metricas:
+            fila = ctk.CTkFrame(izq, fg_color="transparent")
+            fila.pack(fill="x", padx=12, pady=2)
+            fila.grid_columnconfigure(1, weight=1)
+
+            ctk.CTkLabel(fila, text=metrica,
+                         font=(FONTS.family, FONTS.size_xs),
+                         text_color=COLORS.text_secondary,
+                         anchor="w", width=95
+                         ).grid(row=0, column=0, sticky="w")
+            ctk.CTkLabel(fila, text=valor,
+                         font=(FONTS.family, FONTS.size_xs, "bold"),
+                         text_color=color, anchor="w"
+                         ).grid(row=0, column=1, sticky="w", padx=(6, 0))
+            ctk.CTkLabel(fila, text=nota,
+                         font=(FONTS.family, FONTS.size_xs),
+                         text_color=COLORS.text_secondary, anchor="e"
+                         ).grid(row=0, column=2, sticky="e")
+
+        ctk.CTkFrame(izq, fg_color="transparent", height=8).pack()
+
+        # ─ Columna derecha: tabla de coeficientes por variable ────────────────
+        der = ctk.CTkFrame(body, fg_color=COLORS.bg_main,
+                           corner_radius=8, border_width=1,
+                           border_color=COLORS.border)
+        der.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        ctk.CTkLabel(der, text="Coeficientes y significancia por variable",
+                     font=(FONTS.family, FONTS.size_xs, "bold"),
+                     text_color=COLORS.primary
+                     ).pack(anchor="w", padx=12, pady=(10, 6))
+
+        # Encabezado tabla
+        n_cols_tbl = 5 if vif else 4
+        enc = ctk.CTkFrame(der, fg_color=COLORS.primary, corner_radius=0, height=30)
+        enc.pack(fill="x", padx=12, pady=(0, 2))
+        enc.grid_propagate(False)
+        pearson_r = params.get("pearson_r", {})
+        var_principal = params.get("var_principal", "")
+        enc_cols = ["Variable", "Coeficiente", "p-valor", "r Pearson"]
+        if vif:
+            enc_cols.append("VIF")
+        for ci, txt in enumerate(enc_cols):
+            enc.grid_columnconfigure(ci, weight=1)
+            ctk.CTkLabel(enc, text=txt,
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color="white",
+                        anchor="center",
+                        ).grid(row=0, column=ci, sticky="nsew", padx=4, pady=0)
+
+        # Fila intercepto (sin r de Pearson ni VIF)
+        #self._fila_coef_reg(der, "Intercepto (β₀)", coefs.get("Intercepto", 0),
+                           # None, None, 0, None, None, vif)
+
+        # Filas por variable
+        for ri, var in enumerate(vars_ind, start=1):
+            pv    = p_vals.get(var, 1.0)
+            rv    = pearson_r.get(var)
+            vif_v = vif.get(var) if vif else None
+            # Marcar variable principal con estrella
+            nombre_display = f"{var} ★" if var == var_principal else var
+            self._fila_coef_reg(der, nombre_display, coefs[var], pv, ri, rv, vif_v, vif)
+
+        # Leyenda
+        leyenda = ctk.CTkFrame(der, fg_color="transparent")
+        leyenda.pack(anchor="w", padx=12, pady=(4, 4))
+        ctk.CTkLabel(leyenda,
+                     text="p-valor: *** <0.001  ** <0.01  * <0.05  ✗ no sig.   \n r Pearson: verde ≥0.75  amarillo ≥0.50  rojo <0.50 \n ★ = variable del gráfico ",
+                     font=(FONTS.family, FONTS.size_xs),
+                     text_color=COLORS.text_secondary,
+                     wraplength=520, justify="left"
+                     ).pack(side="left")
+
+    def _fila_coef_reg(self, parent, nombre, coef, p_val, ri,
+                       pearson_val, vif_val, mostrar_vif):
+        """Fila individual de la tabla de coeficientes con r de Pearson."""
+        bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
+        fila = ctk.CTkFrame(parent, fg_color=bg, corner_radius=0, height=28)
+        fila.pack(fill="x", padx=12, pady=1)
+        fila.grid_propagate(False)
+        # columnas: Variable | Coef | p-valor | r Pearson [| VIF]
+        n_cols = 5 if mostrar_vif else 4
+        for ci in range(n_cols):
+            fila.grid_columnconfigure(ci, weight=1)
+
+        # p-valor
+        if p_val is None:
+            p_color, p_txt = COLORS.text_secondary, "—"
+        elif p_val < 0.001:
+            p_color, p_txt = COLORS.improvement, f"{p_val:.2f} ***"
+        elif p_val < 0.01:
+            p_color, p_txt = COLORS.improvement, f"{p_val:.2f} **"
+        elif p_val < 0.05:
+            p_color, p_txt = COLORS.improvement, f"{p_val:.2f} *"
+        else:
+            p_color, p_txt = COLORS.degradation, f"{p_val:.2f} ✗"
+
+        # r de Pearson
+        if pearson_val is None:
+            r_color, r_txt = COLORS.text_secondary, "—"
+        else:
+            r_abs = abs(pearson_val)
+            r_txt = f"{pearson_val:+.2f}"
+            if r_abs >= 0.75:   r_color = COLORS.improvement
+            elif r_abs >= 0.50: r_color = COLORS.warning
+            else:               r_color = COLORS.degradation
+
+        vif_txt = f"{vif_val:.2f}" if vif_val is not None else "—"
+
+        ctk.CTkLabel(fila, text=nombre,
+                     font=(FONTS.family, FONTS.size_xs),
+                     text_color=COLORS.text_primary, anchor="center"
+                     ).grid(row=0, column=0, sticky="nsew", padx=4)
+        ctk.CTkLabel(fila, text=f"{coef:,.3f}",
+                     font=(FONTS.family_mono, FONTS.size_xs),
+                     text_color=COLORS.text_primary, anchor="center"
+                     ).grid(row=0, column=1, sticky="nsew", padx=4)
+
+        ctk.CTkLabel(fila, text=p_txt,
+                     font=(FONTS.family, FONTS.size_xs, "bold"),
+                     text_color=p_color, anchor="center"
+                     ).grid(row=0, column=2, sticky="nsew", padx=4)
+        ctk.CTkLabel(fila, text=r_txt,
+                     font=(FONTS.family, FONTS.size_xs, "bold"),
+                     text_color=r_color, anchor="center"
+                     ).grid(row=0, column=3, sticky="nsew", padx=4)
+        if mostrar_vif:
+            vif_color = (COLORS.degradation if vif_val and vif_val > 10
+                         else COLORS.warning if vif_val and vif_val > 5
+                         else COLORS.text_secondary)
+            ctk.CTkLabel(fila, text=vif_txt,
+                         font=(FONTS.family, FONTS.size_xs),
+                         text_color=vif_color, anchor="center"
+                         ).grid(row=0, column=4, sticky="nsew", padx=4)

@@ -912,59 +912,73 @@ class ChartWidget(ctk.CTkFrame):
 
     def plot_correlacion_variable(self, resultado: dict):
         """
-        Scatter X = variable independiente principal, Y = consumo real.
-        Muestra la línea del modelo ajustado (regresión o cociente) encima.
-        Incluye anotación con ecuación y R².
+        Scatter X = variable independiente principal, Y = consumo real del histórico.
+        La línea roja es el modelo ajustado (LBEn). Usa x_hist guardado en modelo_params
+        directamente desde regresion.py / cociente.py — nunca del período de reporte.
         """
-        params   = resultado.get("modelo_params", {})
-        unidad   = resultado.get("unidad", "")
-        x_disp   = resultado.get("x_dispersion", [])
-        x_label  = resultado.get("x_label", "Variable")
-
-        # Usar datos históricos para mostrar el ajuste del modelo
+        params    = resultado.get("modelo_params", {})
+        unidad    = resultado.get("unidad", "")
+        x_label   = resultado.get("x_label", "Variable")
         consumo_h = resultado.get("consumo_hist", [])
         fechas_h  = resultado.get("fechas_hist", [])
 
-        if not x_disp or not consumo_h:
+        if not consumo_h:
             return
 
-        # Reconstruir x_disp para el histórico (puede ser del reporte si hay reporte)
-        # Intentamos recuperar x desde modelo_params
-        x_hist = params.get("x_hist", x_disp)
+        # ── x_hist: siempre del período histórico ─────────────────────────────
+        # regresion.py y calculadora.py lo guardan en modelo_params["x_hist"]
+        x_hist = params.get("x_hist", [])
+        if not x_hist:
+            x_hist = resultado.get("x_dispersion", [])
         if len(x_hist) != len(consumo_h):
-            x_hist = x_disp[:len(consumo_h)]
-
-        # Línea del modelo: generar puntos suavizados
-        import numpy as np
-        x_arr = [float(v) for v in x_hist if v is not None]
-        y_arr = consumo_h[:len(x_arr)]
-
-        if len(x_arr) < 2:
+            x_hist = x_hist[:len(consumo_h)]
+        if not x_hist or len(x_hist) != len(consumo_h):
             return
+
+        # Filtrar pares válidos
+        pares = [
+            (float(xi), float(yi), str(fi))
+            for xi, yi, fi in zip(x_hist, consumo_h, fechas_h)
+            if xi is not None and yi is not None
+        ]
+        if len(pares) < 2:
+            return
+
+        x_arr = [p[0] for p in pares]
+        y_arr = [p[1] for p in pares]
+        f_arr = [p[2] for p in pares]
 
         x_min, x_max = min(x_arr), max(x_arr)
-        x_line = list(np.linspace(x_min, x_max, 60))
+        x_line = list(np.linspace(x_min, x_max, 80))
 
-        # Calcular línea según tipo de modelo
-        coefs = params.get("coeficientes", {})
+        # ── Calcular línea del modelo ─────────────────────────────────────────
+        coefs  = params.get("coeficientes", {})
         indice = params.get("indice", None)
+        r2     = params.get("r2", 0)
 
         if coefs and len(coefs) >= 2:
-            # Regresión lineal simple o múltiple (solo 1ª variable en scatter)
-            vals = list(coefs.values())
-            intercepto = vals[0]
-            pendiente  = vals[1]
-            y_line = [pendiente * xi + intercepto for xi in x_line]
-            r2 = params.get("r2", 0)
+            intercepto = coefs.get("Intercepto", 0)
+            vars_ind   = [k for k in coefs if k != "Intercepto"]
+            # Buscar coef de la variable graficada por nombre
+            pendiente = None
+            for nombre_var in vars_ind:
+                if (x_label.lower() in nombre_var.lower() or
+                        nombre_var.lower() in x_label.lower()):
+                    pendiente = coefs[nombre_var]
+                    break
+            if pendiente is None and vars_ind:
+                pendiente = coefs[vars_ind[0]]
+            if pendiente is None:
+                return
+            y_line   = [pendiente * xi + intercepto for xi in x_line]
             ecuacion = _construir_ecuacion(params, x_label, r2)
         elif indice is not None:
-            # Cociente: y = indice * x
-            y_line = [indice * xi for xi in x_line]
-            r2 = params.get("r2", 0)
+            y_line   = [indice * xi for xi in x_line]
             ecuacion = f"y = {indice:.4f} × x<br>R² = {r2:.3f}"
         else:
             return
 
+        # ── Gráfico ───────────────────────────────────────────────────────────
         fig    = go.Figure()
         layout = get_chart_layout()
         layout["title"] = {
@@ -985,10 +999,9 @@ class ChartWidget(ctk.CTkFrame):
             "bordercolor": "#E0E0E0", "borderwidth": 1,
         }
 
-        # Puntos reales
         hover_pts = [
-            f"{str(f)}<br>{x_label}: {xi:,.2f}<br>Consumo: {yi:,.0f} {unidad}"
-            for f, xi, yi in zip(fechas_h, x_arr, y_arr)
+            f"{f}<br>{x_label}: {xi:,.2f}<br>Consumo: {yi:,.0f} {unidad}"
+            for f, xi, yi in zip(f_arr, x_arr, y_arr)
         ]
         fig.add_trace(go.Scatter(
             x=x_arr, y=y_arr, mode="markers",
@@ -998,27 +1011,20 @@ class ChartWidget(ctk.CTkFrame):
             text=hover_pts,
             hovertemplate="%{text}<extra></extra>",
         ))
-
-        # Línea del modelo
         fig.add_trace(go.Scatter(
             x=x_line, y=y_line, mode="lines",
-            name="Modelo ajustado",
+            name="Modelo ajustado (LBEn)",
             line=dict(color="#E74C3C", width=2.5),
-            hovertemplate=f"{x_label}: %{{x:,.2f}}<br>Modelo: %{{y:,.0f}} {unidad}<extra></extra>",
+            hovertemplate=f"{x_label}: %{{x:,.2f}}<br>LBEn: %{{y:,.0f}} {unidad}<extra></extra>",
         ))
-
-        # Anotación ecuación + R²
         fig.add_annotation(
             xref="paper", yref="paper",
             x=0.02, y=0.97, xanchor="left", yanchor="top",
-            text=ecuacion,
-            showarrow=False,
+            text=ecuacion, showarrow=False,
             bgcolor="rgba(255,255,255,0.88)",
-            bordercolor="#D5D8DC", borderwidth=1,
-            borderpad=6,
+            bordercolor="#D5D8DC", borderwidth=1, borderpad=6,
             font=dict(size=12, color=COLORS.text_primary, family=FONTS.family),
         )
-
         fig.update_layout(**layout)
         self._render(fig)
 
@@ -1134,8 +1140,6 @@ class ChartWidget(ctk.CTkFrame):
         layout["xaxis"]["range"] = [0, x_max * 1.12]
         fig.update_layout(**layout)
         self._render(fig)
-
-    # plot_dispersion eliminado — ya no se usa
 
 
 # ── Helper: construye la cadena de la ecuación ────────────────────────────────

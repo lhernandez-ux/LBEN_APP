@@ -1,14 +1,30 @@
 """
 core/models/regresion.py
 ========================
-Modelo de Regresión Lineal — VERSIÓN BASE (pendiente de fórmulas definitivas)
+Modelo Estadístico de Regresión Lineal — Resolución UPME 16/2024
 
-TODO: Reemplazar los cálculos marcados con # ← FÓRMULA con la lógica real.
+  Y = β₀ + β₁·X₁ + β₂·X₂ + ... + βₖ·Xₖ + ε
 
-Puede ser regresión simple (1 variable) o múltiple (varias variables).
+Datos que exige la resolución UPME 16/2024:
+  - Ecuación ajustada con coeficientes
+  - R² ≥ 0.75  (variación explicada por el modelo)
+  - CV(RMSE) ≤ 20%  (precisión del modelo)
+  - p-valor < 0.05 por variable (significancia estadística)
+  - Correlación de Pearson (r) entre cada variable y el consumo
+  - F-estadístico (significancia global del modelo)
+  - VIF si hay más de una variable (multicolinealidad)
+  - Mínimo 3 períodos por variable independiente
+
+Variable principal para gráfico:
+  La que tenga mayor correlación absoluta con el consumo (|r de Pearson|).
+  Esto garantiza que el gráfico de correlación siempre muestre
+  la relación más relevante, incluso en regresión múltiple.
 """
 
 import numpy as np
+import statsmodels.api as sm
+from scipy import stats
+
 from core.models.base import ModeloBase
 
 
@@ -16,141 +32,167 @@ class ModeloRegresion(ModeloBase):
 
     def ajustar(self):
         df, y, fechas = self._extraer_vectores()
-        # y      = lista de consumos históricos
-        # fechas = etiquetas de período
+        n = len(y)
+        k = len(self.vars_independientes)
 
-        if not self.vars_independientes:
+        # ── Validaciones previas ──────────────────────────────────────────────
+        if k == 0:
             raise ValueError("La regresión requiere al menos una variable independiente.")
+        if n < k * 3:
+            raise ValueError(
+                f"Datos insuficientes: con {k} variable(s) se necesitan al menos "
+                f"{k * 3} períodos (tienes {n})."
+            )
 
-        # Construye la matriz de variables independientes
+        # ── PASO 1: Matriz X ──────────────────────────────────────────────────
         X_cols = []
         for col in self.vars_independientes:
             if col not in df.columns:
-                raise ValueError(f"Columna '{col}' no encontrada.")
-            X_cols.append(df[col].astype(float).tolist())
-        # X_cols = lista de listas, una por variable
-        # Si vars = ['Produccion', 'Temperatura']:
-        #   X_cols = [[980, 900, ...], [18, 22, ...]]
+                raise ValueError(f"Columna '{col}' no encontrada en los datos.")
+            X_cols.append(df[col].astype(float).values)
 
-        n = len(y)
-        k = len(X_cols)  # número de variables independientes
+        X       = np.column_stack(X_cols) if k > 1 else X_cols[0].reshape(-1, 1)
+        y_arr   = np.array(y, dtype=float)
+        X_const = sm.add_constant(X, has_constant="add")
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BLOQUE 1 — COEFICIENTES DE LA REGRESIÓN
-        # Encuentra los valores β₀, β₁, β₂, ... que mejor ajustan:
-        #   y = β₀ + β₁·x₁ + β₂·x₂ + ... + ε
-        #
-        # Datos disponibles:
-        #   y       → lista de n consumos (variable dependiente)
-        #   X_cols  → lista de listas con las variables independientes
-        #   n       → número de períodos
-        #   k       → número de variables independientes
-        #
-        # Debes producir:
-        #   intercepto    → float (β₀, consumo base cuando variables = 0)
-        #   coeficientes  → lista de k floats [β₁, β₂, ...] uno por variable
-        #
-        # PLACEHOLDER actual (OLS con numpy o statsmodels):
-        X = np.column_stack(X_cols) if k > 1 else np.array(X_cols[0]).reshape(-1, 1)
-        X_const = np.column_stack([np.ones(n), X])  # agrega columna de 1s para β₀
+        # ── PASO 2: OLS ───────────────────────────────────────────────────────
+        ols        = sm.OLS(y_arr, X_const).fit()
+        intercepto = float(ols.params[0])
+        coefs_vals = ols.params[1:].tolist()
+        linea_base = ols.fittedvalues.tolist()
 
-        try:
-            # Solución analítica: β = (XᵀX)⁻¹ Xᵀy
-            beta = np.linalg.lstsq(X_const, y, rcond=None)[0]  # ← FÓRMULA
-            intercepto   = float(beta[0])
-            coeficientes_vals = beta[1:].tolist()
-        except Exception:
-            intercepto = float(np.mean(y))
-            coeficientes_vals = [0.0] * k
-        # ══════════════════════════════════════════════════════════════════════
+        # ── PASO 3: Bondad de ajuste ──────────────────────────────────────────
+        r2          = float(ols.rsquared)
+        r2_ajustado = float(ols.rsquared_adj)
+        aic         = float(ols.aic)
+        bic         = float(ols.bic)
+        f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0
+        p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BLOQUE 2 — LÍNEA BASE (predicciones del modelo)
-        # Aplica los coeficientes para predecir el consumo de cada período.
-        #
-        # Datos disponibles:
-        #   intercepto, coeficientes_vals, X_cols, n
-        #
-        # Debes producir:
-        #   linea_base → lista de n valores predichos (ŷ)
-        #
-        # PLACEHOLDER actual:
-        linea_base = []
-        for i in range(n):
-            pred = intercepto + sum(c * X_cols[j][i]
-                                    for j, c in enumerate(coeficientes_vals))  # ← FÓRMULA
-            linea_base.append(pred)
-        # ══════════════════════════════════════════════════════════════════════
+        # p-valores y t-estadísticos por variable
+        p_valores = {
+            col: round(float(pv), 6)
+            for col, pv in zip(self.vars_independientes, ols.pvalues[1:])
+        }
+        t_stats = {
+            col: round(float(tv), 4)
+            for col, tv in zip(self.vars_independientes, ols.tvalues[1:])
+        }
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BLOQUE 3 — R² (bondad de ajuste)
-        # Mide qué tan bien explica el modelo la variación del consumo.
-        # R²=1 = ajuste perfecto. R²=0 = no explica nada.
-        # Mínimo recomendado según ISO 50006 / ASHRAE Guideline 14: R² ≥ 0.75
-        #
-        # Datos disponibles:
-        #   y, linea_base
-        #
-        # Debes producir:
-        #   r2 → float entre 0 y 1
-        #
-        # PLACEHOLDER actual:
+        # ── PASO 4: Correlación de Pearson por variable ───────────────────────
+        # r de Pearson entre cada variable independiente y el consumo.
+        # La resolución lo usa para verificar que cada variable realmente
+        # impacta el consumo. También sirve para elegir la variable principal
+        # del gráfico de correlación.
+        pearson_r = {}
+        for col, x_col in zip(self.vars_independientes, X_cols):
+            r_val, _ = stats.pearsonr(x_col, y_arr)
+            pearson_r[col] = round(float(r_val), 4)
+
+        # Variable con mayor correlación absoluta → eje X del gráfico
+        var_principal = max(pearson_r, key=lambda c: abs(pearson_r[c]))
+        idx_principal = self.vars_independientes.index(var_principal)
+        x_hist_principal = X_cols[idx_principal].tolist()
+
+        # ── PASO 5: RMSE y CV(RMSE) ───────────────────────────────────────────
+        residuos = [yi - yp for yi, yp in zip(y, linea_base)]
+        rmse     = float(np.sqrt(np.mean([e**2 for e in residuos])))
         media_y  = float(np.mean(y))
-        ss_res   = sum((yi - yp) ** 2 for yi, yp in zip(y, linea_base))  # ← FÓRMULA
-        ss_tot   = sum((yi - media_y) ** 2 for yi in y)                  # ← FÓRMULA
-        r2       = 1 - ss_res / ss_tot if ss_tot != 0 else 0.0           # ← FÓRMULA
-        # ══════════════════════════════════════════════════════════════════════
+        cv_rmse  = (rmse / media_y * 100) if media_y != 0 else 0.0
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BLOQUE 4 — INTERVALO DE CONFIANZA
-        # Banda alrededor de cada predicción.
-        # En regresión el IC varía por período (no es constante como en promedio).
-        #
-        # Datos disponibles:
-        #   y, linea_base, self.alpha, n, k
-        #
-        # Debes producir:
-        #   ic_sup → lista de n valores
-        #   ic_inf → lista de n valores
-        #
-        # PLACEHOLDER actual (±t*SEM de los residuos):
-        from scipy import stats
-        errores = [yi - yp for yi, yp in zip(y, linea_base)]
-        sem     = float(np.std(errores, ddof=k + 1)) if n > k + 1 else 0.0  # ← FÓRMULA
-        t_crit  = stats.t.ppf(1 - self.alpha / 2, df=max(n - k - 1, 1))     # ← FÓRMULA
-        ic_sup  = [yp + t_crit * sem for yp in linea_base]                   # ← FÓRMULA
-        ic_inf  = [yp - t_crit * sem for yp in linea_base]                   # ← FÓRMULA
-        # ══════════════════════════════════════════════════════════════════════
+        # ── PASO 6: VIF — solo si hay más de una variable ─────────────────────
+        vif = {}
+        if k > 1:
+            from statsmodels.stats.outliers_influence import variance_inflation_factor
+            for i, col in enumerate(self.vars_independientes):
+                vif[col] = round(float(variance_inflation_factor(X_const, i + 1)), 2)
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BLOQUE 5 — PARÁMETROS DEL MODELO
-        # IMPORTANTE: el dict "coeficientes" es usado en calculadora.py y en
-        # chart_widget.py para construir la ecuación del gráfico.
-        # Estructura esperada:
-        #   {"Intercepto": β₀, "NombreVar1": β₁, "NombreVar2": β₂, ...}
-        #
-        # Agrega aquí todos los diagnósticos que quieras mostrar:
-        #   r2, r2_ajustado, p_valores, VIF, AIC, BIC, etc.
+        # ── PASO 7: Intervalo de confianza ────────────────────────────────────
+        sem    = float(np.std(residuos, ddof=k + 1)) if n > k + 1 else rmse
+        t_crit = stats.t.ppf(1 - self.alpha / 2, df=max(n - k - 1, 1))
+        ic_sup = [yp + t_crit * sem for yp in linea_base]
+        ic_inf = [yp - t_crit * sem for yp in linea_base]
+
+        # ── PASO 8: Advertencias ──────────────────────────────────────────────
+        advertencias = []
+
+        if r2 < 0.75:
+            advertencias.append(
+                f"R² = {r2:.3f} está por debajo del mínimo recomendado (0.75). "
+                "El modelo explica poco la variación del consumo."
+            )
+        if cv_rmse > 20:
+            advertencias.append(
+                f"CV(RMSE) = {cv_rmse:.1f}% supera el límite recomendado del 20%. "
+                "El error es alto respecto al consumo promedio."
+            )
+        vars_no_sig = [col for col, pv in p_valores.items() if pv >= 0.05]
+        if vars_no_sig:
+            advertencias.append(
+                f"Variable(s) no significativa(s) (p ≥ 0.05): "
+                f"{', '.join(vars_no_sig)}. Considera eliminarlas del modelo."
+            )
+        if vif:
+            vars_vif = [col for col, v in vif.items() if v > 10]
+            if vars_vif:
+                advertencias.append(
+                    f"Multicolinealidad alta (VIF > 10) en: "
+                    f"{', '.join(vars_vif)}. Las variables pueden estar correlacionadas."
+                )
+        if p_valor_f >= 0.05:
+            advertencias.append(
+                f"El modelo global no es significativo (F p-valor = {p_valor_f:.4f}). "
+                "Las variables no explican el consumo mejor que el azar."
+            )
+        # Correlaciones bajas
+        vars_corr_baja = [col for col, r in pearson_r.items() if abs(r) < 0.50]
+        if vars_corr_baja:
+            advertencias.append(
+                f"Correlación baja con el consumo (|r| < 0.50) en: "
+                f"{', '.join(vars_corr_baja)}. Verifica si estas variables son relevantes."
+            )
+
+        # ── PASO 9: Coeficientes y params ─────────────────────────────────────
         coefs_dict = {"Intercepto": round(intercepto, 6)}
-        for nombre, val in zip(self.vars_independientes, coeficientes_vals):
+        for nombre, val in zip(self.vars_independientes, coefs_vals):
             coefs_dict[nombre] = round(val, 6)
 
-        params = {
-            "coeficientes": coefs_dict,    # ← IMPORTANTE: mantén esta estructura
-            "r2":           round(r2, 4),
-            "sem":          round(sem, 4),
-            "n":            n,
-            "k":            k,
-            # Agrega aquí: "r2_ajustado", "p_valores", "vif", "aic", "bic"
-            # cuando tengas los cálculos listos
+        self.params = {
+            # Ecuación del modelo
+            "coeficientes":    coefs_dict,
+            # Bondad de ajuste (requeridos por la resolución)
+            "r2":              round(r2, 4),
+            "r2_ajustado":     round(r2_ajustado, 4),
+            "rmse":            round(rmse, 4),
+            "cv_rmse":         round(cv_rmse, 2),
+            # Significancia estadística
+            "p_valores":       p_valores,
+            "t_estadisticos":  t_stats,
+            "f_estadistico":   round(f_stat, 4),
+            "p_valor_f":       round(p_valor_f, 6),
+            # Correlación de Pearson por variable (requerida por resolución)
+            "pearson_r":       pearson_r,
+            "var_principal":   var_principal,   # variable con mayor |r|
+            # Multicolinealidad
+            "vif":             vif,
+            # Criterios de información
+            "aic":             round(aic, 2),
+            "bic":             round(bic, 2),
+            # Para IC en reporte
+            "sem":             round(sem, 4),
+            "n":               n,
+            "k":               k,
+            # Eje X del gráfico = variable principal (mayor |r con consumo|)
+            "x_hist":          x_hist_principal,
+            "advertencias":    advertencias,
         }
-        # ══════════════════════════════════════════════════════════════════════
 
-        # — No tocar desde aquí hacia abajo —
+        # ── Atributos base ────────────────────────────────────────────────────
         self.consumo_real = y
         self.linea_base   = linea_base
         self.ic_superior  = ic_sup
         self.ic_inferior  = ic_inf
         self.fechas       = fechas
-        self.params       = params
         self.coeficientes = coefs_dict
+        self.advertencias = advertencias
+        self._reg         = ols
