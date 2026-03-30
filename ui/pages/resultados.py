@@ -129,8 +129,8 @@ class ResultadosPage(ctk.CTkFrame):
             g1.pack(fill="x", padx=12, pady=(0, 8))
             g1.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
 
-        # ── Gráfico 2: Correlación consumo vs variable (Modelos 2 y 3) ───────
-        if modelo_id in ("cociente", "regresion"):
+        # ── Gráfico 2: Correlación consumo vs variable (solo Modelo 3 — Regresión) ─
+        if modelo_id == "regresion":
             x_disp  = r.get("x_dispersion", [])
             x_label = r.get("x_label", "")
             if x_disp and x_label and x_label != "Período":

@@ -239,24 +239,34 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza):
             coc_mes = lben_mensual.get(num_mes, indice_global)
             lb.append((coc_mes if coc_mes is not None else indice_global) * xi)
 
-    else:
-        # Regresión: aplica la ecuación ajustada directamente
+    else:  # ModeloRegresion
+        # Aplica la ecuación ajustada directamente usando statsmodels
         import statsmodels.api as sm
+        
+        # Preparar la matriz X con las variables independientes
         X = np.column_stack([df[v].astype(float).values for v in vars_ind]) \
             if len(vars_ind) > 1 else df[vars_ind[0]].astype(float).values.reshape(-1, 1)
         X_const = sm.add_constant(X, has_constant="add")
-
+        
         if hasattr(modelo, "_reg"):
+            # Usar el modelo ajustado de statsmodels
             lb = modelo._reg.predict(X_const).tolist()
         else:
             # Fallback manual con los coeficientes
             coefs = list(modelo.coeficientes.values())
-            lb = [coefs[0] + sum(c * xi for c, xi in zip(coefs[1:], row))
-                  for row in X.tolist()]
+            intercepto = coefs[0]
+            pendientes = coefs[1:]
+            lb = []
+            for row in X.tolist():
+                if isinstance(row, (int, float)):
+                    pred = intercepto + pendientes[0] * row
+                else:
+                    pred = intercepto + sum(p * x for p, x in zip(pendientes, row))
+                lb.append(pred)
 
     # IC usando el SEM del histórico
     sem    = modelo.params.get("sem", 0)
-    n      = len(consumo)
+    n      = len(consumo) if consumo else 30
     k      = modelo.params.get("k", 1)
     t_crit = stats.t.ppf(
         1 - (1 - nivel_confianza / 100) / 2,

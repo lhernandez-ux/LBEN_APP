@@ -145,17 +145,17 @@ class ConfiguracionPage(ctk.CTkFrame):
                               command=self._add_var_field).pack(anchor="w", padx=16, pady=8)
 
         # ── Opciones avanzadas ─────────────────────────────────────────────────
-        self._section(self.body, "Opciones avanzadas")
-        opt_card = self._card(self.body)
-        self.var_confianza = ctk.StringVar(value="95")
-        self._field_dropdown(opt_card, "Nivel de confianza (%)", self.var_confianza, ["90", "95", "99"])
-        if m["id"] == "regresion":
-            self.var_forzar = ctk.BooleanVar(value=False)
-            r = ctk.CTkFrame(opt_card, fg_color="transparent")
-            r.pack(fill="x", padx=16, pady=(0, 12))
-            ctk.CTkCheckBox(r, text="Forzar intercepto en cero",
-                            variable=self.var_forzar,
-                            font=(FONTS.family, FONTS.size_sm)).pack(side="left")
+        #self._section(self.body, "Opciones avanzadas")
+        #opt_card = self._card(self.body)
+        #self.var_confianza = ctk.StringVar(value="95")
+        #self._field_dropdown(opt_card, "Nivel de confianza (%)", self.var_confianza, ["90", "95", "99"])
+        #if m["id"] == "regresion":
+         #   self.var_forzar = ctk.BooleanVar(value=False)
+          #  r = ctk.CTkFrame(opt_card, fg_color="transparent")
+           # r.pack(fill="x", padx=16, pady=(0, 12))
+            #ctk.CTkCheckBox(r, text="Forzar intercepto en cero",
+             #               variable=self.var_forzar,
+              #              font=(FONTS.family, FONTS.size_sm)).pack(side="left")
 
         # ── Acciones ──────────────────────────────────────────────────────────
         actions = ctk.CTkFrame(self.body, fg_color="transparent")

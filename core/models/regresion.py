@@ -113,25 +113,32 @@ class ModeloRegresion(ModeloBase):
         ic_sup = [yp + t_crit * sem for yp in linea_base]
         ic_inf = [yp - t_crit * sem for yp in linea_base]
 
-        # ── PASO 8: Advertencias ──────────────────────────────────────────────
+        # ── PASO 8: Advertencias según Resolución UPME ────────────────────────
         advertencias = []
 
+        # 8.1 R² mínimo recomendado 0.75
         if r2 < 0.75:
             advertencias.append(
                 f"R² = {r2:.3f} está por debajo del mínimo recomendado (0.75). "
                 "El modelo explica poco la variación del consumo."
             )
+        
+        # 8.2 CV(RMSE) ≤ 20%
         if cv_rmse > 20:
             advertencias.append(
                 f"CV(RMSE) = {cv_rmse:.1f}% supera el límite recomendado del 20%. "
                 "El error es alto respecto al consumo promedio."
             )
+        
+        # 8.3 p-valor < 0.05 por variable
         vars_no_sig = [col for col, pv in p_valores.items() if pv >= 0.05]
         if vars_no_sig:
             advertencias.append(
                 f"Variable(s) no significativa(s) (p ≥ 0.05): "
                 f"{', '.join(vars_no_sig)}. Considera eliminarlas del modelo."
             )
+        
+        # 8.4 VIF > 10 indica multicolinealidad alta
         if vif:
             vars_vif = [col for col, v in vif.items() if v > 10]
             if vars_vif:
@@ -139,18 +146,23 @@ class ModeloRegresion(ModeloBase):
                     f"Multicolinealidad alta (VIF > 10) en: "
                     f"{', '.join(vars_vif)}. Las variables pueden estar correlacionadas."
                 )
+        
+        # 8.5 Modelo global no significativo
         if p_valor_f >= 0.05:
             advertencias.append(
                 f"El modelo global no es significativo (F p-valor = {p_valor_f:.4f}). "
                 "Las variables no explican el consumo mejor que el azar."
             )
-        # Correlaciones bajas
+        
+        # 8.6 Correlaciones bajas (|r| < 0.50)
         vars_corr_baja = [col for col, r in pearson_r.items() if abs(r) < 0.50]
         if vars_corr_baja:
             advertencias.append(
                 f"Correlación baja con el consumo (|r| < 0.50) en: "
                 f"{', '.join(vars_corr_baja)}. Verifica si estas variables son relevantes."
             )
+        
+        # 8.7 Verificar que hay al menos 3 períodos por variable (ya validado arriba)
 
         # ── PASO 9: Coeficientes y params ─────────────────────────────────────
         coefs_dict = {"Intercepto": round(intercepto, 6)}

@@ -218,6 +218,34 @@ class ChartWidget(ctk.CTkFrame):
                 hovertemplate="<b>%{x}</b><br>LBEn: %{y:,.2f}<extra></extra>",
             ))
 
+            # ── Línea meta (promedio de valores por debajo de LBEn) ──────────
+            meta_vals = []
+            for mes in range(1, 13):
+                lb = lben_mensual.get(mes)
+                if lb is None:
+                    meta_vals.append(None)
+                    continue
+                vals_dep = datos_depurados.get(mes, [])
+                # Filtrar solo valores que están por debajo de la línea base
+                valores_debajo = [v for v in vals_dep if v < lb]
+                if valores_debajo:
+                    # Promedio de los valores que están por debajo de LBEn
+                    meta_vals.append(float(np.mean(valores_debajo)))
+                else:
+                    # Si no hay valores por debajo, usar 90% de LBEn como referencia
+                    meta_vals.append(lb * 0.90)
+            if any(v is not None for v in meta_vals):
+                fig.add_trace(go.Scatter(
+                    x=meses_x,
+                    y=meta_vals,
+                    mode="lines+markers",
+                    name="Línea meta (promedio de valores por debajo de LBEn)",
+                    line=dict(color="#106B28", width=2.0, dash="dash"),
+                    marker=dict(color="#0EA818", size=7,
+                                line=dict(width=1.5, color="white")),
+                    hovertemplate="<b>%{x}</b><br>Meta: %{y:,.2f}<extra></extra>",
+                ))
+
         fig.update_layout(**layout)
         self._render(fig)
 
@@ -226,6 +254,7 @@ class ChartWidget(ctk.CTkFrame):
         Gráfico de línea base para modelo cociente.
         Eje X = 12 meses. Puntos por año con el valor del cociente (kWh/variable).
         Línea roja = LBEn mensual (cociente promedio depurado).
+        Línea meta = promedio de cocientes por debajo de LBEn.
         """
         unidad  = resultado.get("unidad", "")
         params  = resultado.get("modelo_params", {})
@@ -342,6 +371,32 @@ class ChartWidget(ctk.CTkFrame):
                 marker=dict(color="#E74C3C", size=7),
                 hovertemplate="<b>%{x}</b><br>LBEn: %{y:,.4f}<extra></extra>",
             ))
+
+            # ── Línea meta (promedio de valores por debajo de LBEn) ──────────
+            meta_vals = []
+            for mes in range(1, 13):
+                lb = lben_mensual.get(mes)
+                if lb is None:
+                    meta_vals.append(None)
+                    continue
+                vals_dep = coc_dep.get(mes, [])
+                # Filtrar solo valores que están por debajo de la línea base
+                valores_debajo = [v for v in vals_dep if v < lb]
+                if valores_debajo:
+                    meta_vals.append(float(np.mean(valores_debajo)))
+                else:
+                    meta_vals.append(lb * 0.90)
+            if any(v is not None for v in meta_vals):
+                fig.add_trace(go.Scatter(
+                    x=meses_x,
+                    y=meta_vals,
+                    mode="lines+markers",
+                    name="Línea meta (promedio de valores por debajo de LBEn)",
+                    line=dict(color="#1A78C2", width=2.0, dash="dash"),
+                    marker=dict(color="#1A78C2", size=7,
+                                line=dict(width=1.5, color="white")),
+                    hovertemplate="<b>%{x}</b><br>Meta: %{y:,.4f}<extra></extra>",
+                ))
 
         fig.update_layout(**layout)
         self._render(fig)
@@ -904,6 +959,31 @@ class ChartWidget(ctk.CTkFrame):
                 hovertemplate="<b>%{x}</b><br>LBEn: %{y:,.2f}<extra></extra>",
             ))
 
+            # ── Línea meta (promedio de valores por debajo de LBEn) ──────────
+            meta_vals_scatter = []
+            for mes in range(1, 13):
+                lb = lben_mensual.get(mes)
+                if lb is None:
+                    meta_vals_scatter.append(None)
+                    continue
+                vals_dep = fuente.get(mes, [])
+                # Filtrar solo valores que están por debajo de la línea base
+                valores_debajo = [v for v in vals_dep if v < lb]
+                if valores_debajo:
+                    meta_vals_scatter.append(float(np.mean(valores_debajo)))
+                else:
+                    meta_vals_scatter.append(lb * 0.90)
+            if any(v is not None for v in meta_vals_scatter):
+                fig.add_trace(go.Scatter(
+                    x=NOMBRES, y=meta_vals_scatter,
+                    mode="lines+markers",
+                    name="Línea meta (promedio de valores por debajo de LBEn)",
+                    line=dict(color="#1A78C2", width=2.0, dash="dash"),
+                    marker=dict(color="#1A78C2", size=8,
+                                line=dict(width=1.5, color="white")),
+                    hovertemplate="<b>%{x}</b><br>Meta: %{y:,.2f}<extra></extra>",
+                ))
+
         fig.update_layout(**layout)
         self._render(fig)
 
@@ -1028,6 +1108,7 @@ class ChartWidget(ctk.CTkFrame):
         fig.update_layout(**layout)
         self._render(fig)
 
+
     # ── Gráfico 3-nuevo: LBEn vs línea meta de mejores desempeños ────────────
 
     def plot_lben_vs_meta(self, resultado: dict, titulo_proyecto: str = ""):
@@ -1140,7 +1221,6 @@ class ChartWidget(ctk.CTkFrame):
         layout["xaxis"]["range"] = [0, x_max * 1.12]
         fig.update_layout(**layout)
         self._render(fig)
-
 
 # ── Helper: construye la cadena de la ecuación ────────────────────────────────
 

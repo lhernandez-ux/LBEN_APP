@@ -206,7 +206,6 @@ class MonitoreoPage(ctk.CTkFrame):
         campos = [
             ("Modelo",            p.get("modelo_id", "—").title()),
             ("Unidad",            p.get("unidad_energia", "—")),
-            ("Confianza",         f"{p.get('nivel_confianza', 95)}%"),
             ("Período histórico", p.get("periodo_historico", "—")),
             ("Columna consumo",   p.get("col_consumo", "—")),
             ("Guardado",          p.get("guardado_en", "")[:10]),
