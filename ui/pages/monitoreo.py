@@ -205,6 +205,7 @@ class MonitoreoPage(ctk.CTkFrame):
 
         campos = [
             ("Modelo",            p.get("modelo_id", "—").title()),
+            ("Zona climática",    p.get("zona_climatica", "—")),
             ("Unidad",            p.get("unidad_energia", "—")),
             ("Período histórico", p.get("periodo_historico", "—")),
             ("Columna consumo",   p.get("col_consumo", "—")),
@@ -361,7 +362,7 @@ class MonitoreoPage(ctk.CTkFrame):
                       ).pack(side="left", padx=(0, 8))
 
         if existe:
-            ctk.CTkButton(btns, text="🔄  Recalcular",
+            ctk.CTkButton(btns, text="🔄  Abrir proyecto",
                           font=(FONTS.family, FONTS.size_sm),
                           fg_color="transparent",
                           hover_color=COLORS.primary_light,

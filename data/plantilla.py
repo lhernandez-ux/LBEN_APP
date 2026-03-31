@@ -2,13 +2,18 @@
 data/plantilla.py — Genera plantilla Excel con DOS hojas de datos:
   • "Histórico"  — período de referencia para ajustar el modelo
   • "Reporte"    — período nuevo para evaluar desempeño (opcional)
+  
+Soporta tres frecuencias:
+  • mensual: fechas en formato "ene-2024"
+  • diario:  fechas en formato "dd/mm/yyyy"
+  • horario: fechas en formato "dd/mm/yyyy HH:00"
 """
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from datetime import date
-from typing import List, Optional
+from datetime import date, datetime
+from typing import List, Optional, Union
 
 _FILL_T  = PatternFill("solid", fgColor="1B4F72")
 _FILL_S  = PatternFill("solid", fgColor="2E86C1")
@@ -32,25 +37,33 @@ _AC  = Alignment(horizontal="center", vertical="center")
 
 def generar_plantilla(path, modelo_id, col_consumo, vars_independientes,
                       fechas_historico=None, fechas_reporte=None,
-                      nombre_proyecto="", unidad="kWh"):
+                      nombre_proyecto="", zona_climatica="", unidad="kWh",
+                      frecuencia="mensual"):
+    """
+    Genera la plantilla Excel.
+    
+    Args:
+        frecuencia: "mensual", "diario" o "horario"
+    """
     wb = openpyxl.Workbook()
-    _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
+    _hoja_instrucciones(wb, modelo_id, nombre_proyecto, zona_climatica, unidad,
                         col_consumo, vars_independientes,
-                        fechas_historico, fechas_reporte)
+                        fechas_historico, fechas_reporte, frecuencia)
     _hoja_datos(wb, "Histórico", col_consumo, vars_independientes,
                 fechas_historico or [], unidad, _FILL_FH, _FILL_FD, _FH,
                 "Período histórico — para ajustar el modelo (línea base)",
-                incluir_anr=True)
+                incluir_anr=True, frecuencia=frecuencia)
     if fechas_reporte:
         _hoja_datos(wb, "Reporte", col_consumo, vars_independientes,
                     fechas_reporte, unidad, _FILL_FR, _FILL_RD, _FRF,
-                    "Período de reporte — para evaluar el desempeño")
+                    "Período de reporte — para evaluar el desempeño",
+                    frecuencia=frecuencia)
     wb.active = wb["Histórico"]
     wb.save(path)
 
 
-def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
-                         col_consumo, vars_ind, fh, fr):
+def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, zona_climatica, unidad,
+                         col_consumo, vars_ind, fh, fr, frecuencia):
     ws = wb.active
     ws.title = "Instrucciones"
     ws.column_dimensions["A"].width = 38
@@ -62,15 +75,16 @@ def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
     ws["A1"].alignment = _AC; ws.row_dimensions[1].height = 30
 
     ws.merge_cells("A2:B2")
-    ws["A2"] = f"Modelo: {modelo_id.title()}  |  Proyecto: {nombre_proyecto or '—'}  |  Unidad: {unidad}"
+    ws["A2"] = f"Modelo: {modelo_id.title()}  |  Proyecto: {nombre_proyecto or '—'}  |  Unidad: {unidad}  |  Frecuencia: {_freq_text(frecuencia)}"
     ws["A2"].fill = _FILL_S; ws["A2"].font = Font(bold=True, color="FFFFFF", size=10)
     ws["A2"].alignment = _AC
 
     datos = [
         ("Columna consumo:", col_consumo),
         ("Variables ind.:", ", ".join(vars_ind) if vars_ind else "Ninguna"),
-        ("Período histórico:", f"{_fmt(fh[0])} → {_fmt(fh[-1])}  ({len(fh)} meses)" if fh else "—"),
-        ("Período de reporte:", f"{_fmt(fr[0])} → {_fmt(fr[-1])}  ({len(fr)} meses)" if fr else "No configurado"),
+        ("Zona climática:", zona_climatica or "-"),
+        ("Período histórico:", f"{_fmt_fecha(fh[0], frecuencia)} → {_fmt_fecha(fh[-1], frecuencia)}  ({len(fh)} períodos)" if fh else "—"),
+        ("Período de reporte:", f"{_fmt_fecha(fr[0], frecuencia)} → {_fmt_fecha(fr[-1], frecuencia)}  ({len(fr)} períodos)" if fr else "No configurado"),
     ]
     for i, (k, v) in enumerate(datos, start=4):
         ws[f"A{i}"] = k; ws[f"A{i}"].font = Font(bold=True, size=10, color="1B4F72")
@@ -79,13 +93,20 @@ def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
     ws["A9"] = "INSTRUCCIONES"
     ws["A9"].font = Font(bold=True, size=11, color="1B4F72")
 
+    freq_instructions = {
+        "mensual": "   Las fechas están en formato 'ene-2024' (mes-año).",
+        "diario":  "   Las fechas están en formato 'dd/mm/yyyy' (día/mes/año).",
+        "horario": "   Las fechas están en formato 'dd/mm/yyyy HH:00' (día/mes/año hora).",
+    }
+    
     lineas = [
         "1. Hoja 'Histórico': llena los datos del período de referencia.",
-        "   Las fechas ya están precargadas. Solo completa los valores numéricos.",
+        freq_instructions.get(frecuencia, "   Las fechas ya están precargadas."),
+        "   Solo completa los valores numéricos.",
         "2. Columna 'Ajuste_NR' (Hoja Histórico): OPCIONAL.",
         "   Escribe el motivo si un mes es anómalo (ej: 'mantenimiento', 'falla').",
-        "   Deja en blanco si el mes es normal.",
-        "   Los meses marcados se corregirán automáticamente antes de calcular.",
+        "   Deja en blanco si el período es normal.",
+        "   Los períodos marcados se corregirán automáticamente antes de calcular.",
         "3. Hoja 'Reporte' (si existe): llena los datos del período a evaluar.",
         "   La herramienta comparará estos datos con la línea base calculada.",
         "4. No elimines ni renombres las columnas.",
@@ -97,7 +118,7 @@ def _hoja_instrucciones(wb, modelo_id, nombre_proyecto, unidad,
 
 def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
                 unidad, fill_hdr_fecha, fill_celda_fecha, font_fecha, titulo,
-                incluir_anr=False):
+                incluir_anr=False, frecuencia="mensual"):
     ws = wb.create_sheet(nombre_hoja)
     columnas = ["Fecha", col_consumo] + vars_ind
     if incluir_anr:
@@ -121,7 +142,7 @@ def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
         ws.column_dimensions[get_column_letter(j)].width = 20
 
     # Fila 3: hints
-    anr_cols = (["¿Mes anómalo? (motivo)"] if incluir_anr else [])
+    anr_cols = (["¿Período anómalo? (motivo)"] if incluir_anr else [])
     hints = ["(automático)", f"Consumo en {unidad}"] + [f"Variable {i+1}" for i in range(len(vars_ind))] + anr_cols
     for j, h in enumerate(hints, start=1):
         c = ws.cell(row=3, column=j, value=h)
@@ -138,12 +159,11 @@ def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
             c.border = _B; c.alignment = _AC
             col_name = columnas[j - 1]
             if j == 1:
-                c.value = _fmt(f)
+                c.value = _fmt_fecha(f, frecuencia)
                 c.fill = fill_celda_fecha
                 c.font = font_fecha
             elif col_name == "Ajuste_NR":
                 c.fill = _FILL_ANR
-                # Validation list: empty (normal) or text
                 c.value = ""
                 c.alignment = Alignment(horizontal="left", vertical="center")
             else:
@@ -153,16 +173,34 @@ def _hoja_datos(wb, nombre_hoja, col_consumo, vars_ind, fechas,
     ws.freeze_panes = "B4"
 
 
-def _fmt(d: date) -> str:
-    ab = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
-    return f"{ab[d.month-1]}-{d.year}"
+def _fmt_fecha(f: Union[date, datetime], frecuencia: str) -> str:
+    """Formatea una fecha según la frecuencia."""
+    if frecuencia == "mensual":
+        ab = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+        return f"{ab[f.month-1]}-{f.year}"
+    elif frecuencia == "diario":
+        return f.strftime("%d/%m/%Y")
+    elif frecuencia == "horario":
+        return f.strftime("%d/%m/%Y %H:00")
+    return str(f)
+
+
+def _freq_text(frecuencia: str) -> str:
+    """Devuelve el texto descriptivo de la frecuencia."""
+    if frecuencia == "mensual":
+        return "Mensual (mes-año)"
+    elif frecuencia == "diario":
+        return "Diario (día/mes/año)"
+    elif frecuencia == "horario":
+        return "Horario (día/mes/año hora)"
+    return frecuencia
 
 
 def expandir_reporte(path_origen, path_destino, nuevas_fechas,
-                     col_consumo, vars_independientes, unidad="kWh"):
+                     col_consumo, vars_independientes, unidad="kWh", frecuencia="mensual"):
     """
     Lee el Excel base (path_origen), y en la hoja 'Reporte' agrega las
-    nuevas_fechas al final (sin duplicar los meses ya existentes).
+    nuevas_fechas al final (sin duplicar los períodos ya existentes).
     Guarda el resultado en path_destino (puede ser el mismo archivo).
     Devuelve (n_existentes, n_agregadas).
     """
@@ -188,13 +226,19 @@ def expandir_reporte(path_origen, path_destino, nuevas_fechas,
             filas_existentes.append((fecha_str, valores))
 
     # ── 3. Filtrar solo fechas realmente nuevas ───────────────────────────────
-    def _fmt_d(d):
-        ab = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
-        return f"{ab[d.month-1]}-{d.year}"
+    def _fmt_fecha_local(f):
+        if frecuencia == "mensual":
+            ab = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+            return f"{ab[f.month-1]}-{f.year}"
+        elif frecuencia == "diario":
+            return f.strftime("%d/%m/%Y")
+        elif frecuencia == "horario":
+            return f.strftime("%d/%m/%Y %H:00")
+        return str(f)
 
     fechas_a_agregar = [
         f for f in nuevas_fechas
-        if _fmt_d(f).lower() not in fechas_existentes_str
+        if _fmt_fecha_local(f).lower() not in fechas_existentes_str
     ]
     n_existentes = len(filas_existentes)
     n_agregadas  = len(fechas_a_agregar)
@@ -255,7 +299,7 @@ def expandir_reporte(path_origen, path_destino, nuevas_fechas,
         i = base_i + k
         r = i + 4
         bg = _FILL_P if i % 2 == 0 else _FILL_I
-        cf = ws.cell(row=r, column=1, value=_fmt_d(fecha_obj))
+        cf = ws.cell(row=r, column=1, value=_fmt_fecha_local(fecha_obj))
         cf.fill = _FILL_RD; cf.font = _FRF; cf.alignment = _AC; cf.border = _B
         for j in range(2, n_cols_tot + 1):
             c = ws.cell(row=r, column=j)

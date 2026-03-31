@@ -10,6 +10,8 @@ Flujo:
   3. Si existe df_reporte, genera predicciones para esos datos nuevos
      y calcula desempeño y CUSUM sobre el período de reporte.
   4. Si no hay df_reporte, el análisis se hace solo sobre el histórico.
+  
+Soporta diferentes frecuencias para el modelo de regresión.
 """
 
 import numpy as np
@@ -35,9 +37,13 @@ def calcular(
     col_consumo:  str,
     vars_independientes: List[str],
     nivel_confianza: int = 95,
+    frecuencia: str = "mensual",  # nuevo parámetro
 ) -> dict:
     """
     Retorna un dict con todos los vectores y métricas para la UI.
+    
+    Args:
+        frecuencia: "mensual", "diario" o "horario" (solo usado para regresión)
     """
     if modelo_id not in MODELOS:
         raise ValueError(f"Modelo desconocido: {modelo_id}")
@@ -56,6 +62,7 @@ def calcular(
         col_consumo=col_consumo,
         vars_independientes=vars_independientes,
         nivel_confianza=nivel_confianza,
+        frecuencia=frecuencia,  # pasar frecuencia al modelo
     )
     modelo.ajustar()
 
@@ -75,7 +82,7 @@ def calcular(
     if df_reporte is not None and len(df_reporte) > 0:
         fechas_rep, consumo_rep, lb_rep, ic_sup_rep, ic_inf_rep = \
             _predecir_reporte(modelo, df_reporte, col_consumo,
-                              vars_independientes, nivel_confianza)
+                              vars_independientes, nivel_confianza, frecuencia)
         tiene_reporte = True
     else:
         fechas_rep = consumo_rep = lb_rep = ic_sup_rep = ic_inf_rep = []
@@ -142,6 +149,7 @@ def calcular(
     modelo_params = {
         **modelo.params,
         "modelo_id": modelo_id,
+        "frecuencia": frecuencia,  # guardar frecuencia en resultados
         **params_extra,
     }
 
@@ -194,12 +202,15 @@ def calcular(
         "resumen_anr":           resumen_anr_dict,
         "consumo_hist_original": consumo_hist_original,
         "fechas_hist_original":  fechas_hist if hay_anr else [],
+        
+        # Frecuencia (para la UI)
+        "frecuencia":            frecuencia,
     }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza):
+def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, frecuencia):
     """
     Aplica el modelo ya ajustado al período de reporte.
     Cada tipo de modelo usa su propio mecanismo de predicción.

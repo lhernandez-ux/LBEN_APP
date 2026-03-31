@@ -11,7 +11,7 @@ from ui.theme import COLORS, FONTS, SIZES
 MODELOS = [
     {
         "id": "promedio",
-        "nombre": "Modelo de Promedio",
+        "nombre": "Modelo de Valor Absoluto",
         "nivel": "Básico",
         "nivel_color": "#1E8449",
         "nivel_bg": "#D5F5E3",      # fondo claro del badge
@@ -26,7 +26,7 @@ MODELOS = [
     },
     {
         "id": "cociente",
-        "nombre": "Modelo de Cociente",
+        "nombre": "Modelo de Cociente de Valores Medidos",
         "nivel": "Intermedio",
         "nivel_color": "#B7950B",
         "nivel_bg": "#FEF9E7",
@@ -41,7 +41,7 @@ MODELOS = [
     },
     {
         "id": "regresion",
-        "nombre": "Regresión Lineal",
+        "nombre": "Metodo Estadistico",
         "nivel": "Avanzado",
         "nivel_color": "#1A5276",
         "nivel_bg": "#D6EAF8",
@@ -79,7 +79,7 @@ class ModelosPage(ctk.CTkFrame):
                       font=(FONTS.family, FONTS.size_sm),
                       command=lambda: self.app.show_page("IntroPage")).pack(side="left", padx=16, pady=14)
 
-        ctk.CTkLabel(header, text="Selecciona el modelo estadístico",
+        ctk.CTkLabel(header, text="Selecciona el modelo",
                      font=(FONTS.family, FONTS.size_lg, "bold"),
                      text_color=COLORS.text_primary).pack(side="left", padx=8)
 

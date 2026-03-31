@@ -16,6 +16,9 @@ class Sesion:
     col_consumo:          str  = "Consumo_kWh"
     vars_independientes:  list = field(default_factory=list)
     nivel_confianza:      int  = 95
+    
+    # Frecuencia de los datos (solo para regresión lineal)
+    frecuencia_datos:     str  = "mensual"  # "mensual", "diario", "horario"
 
     # Período histórico (entrena el modelo)
     periodo_historico: str = ""

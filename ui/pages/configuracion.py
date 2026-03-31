@@ -4,16 +4,28 @@ ui/pages/configuracion.py
 Configuración con DOS períodos:
   • Período histórico  → entrena el modelo (línea base)
   • Período de reporte → se compara contra la línea base (opcional)
+  
+Para regresión lineal se puede elegir la frecuencia de los datos:
+  • Mensual
+  • Diario
+  • Horario
 """
 
 import customtkinter as ctk
-from datetime import date
+from datetime import date, timedelta
 from ui.theme import COLORS, FONTS, SIZES
 from data.plantilla import generar_plantilla
 
 MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
          "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 AÑOS  = [str(y) for y in range(2015, date.today().year + 2)]
+
+# Opciones de frecuencia
+FRECUENCIAS = [
+    {"id": "mensual", "nombre": "Mensual", "dias": 30},
+    {"id": "diario",  "nombre": "Diario",  "dias": 1},
+    {"id": "horario", "nombre": "Horario", "dias": 1/24},
+]
 
 
 class ConfiguracionPage(ctk.CTkFrame):
@@ -22,6 +34,7 @@ class ConfiguracionPage(ctk.CTkFrame):
         self.app = app
         self.modelo = None
         self.var_entries = []
+        self.frecuencia_actual = "mensual"  # valor por defecto
         self._build()
 
     def on_enter(self, modelo: dict = None, **kwargs):
@@ -66,12 +79,47 @@ class ConfiguracionPage(ctk.CTkFrame):
         info_card = self._card(self.body)
 
         self.entry_proyecto = self._field(info_card, "Nombre del proyecto", "Planta Norte — 2024")
+        self.entry_zona     = self._field(info_card, "Zona climática (opcional)")
         self.entry_unidad   = self._field(info_card, "Unidad de energía", "kWh")
+
+        # ── Selector de frecuencia (SOLO para regresión lineal) ────────────────
+        if m["id"] == "regresion":
+            self._section(self.body, "Frecuencia de los datos")
+            freq_card = self._card(self.body)
+            
+            ctk.CTkLabel(freq_card,
+                         text="Selecciona la frecuencia con la que se registrarán los datos:",
+                         font=(FONTS.family, FONTS.size_sm),
+                         text_color=COLORS.text_secondary).pack(anchor="w", padx=16, pady=(12, 6))
+            
+            freq_frame = ctk.CTkFrame(freq_card, fg_color="transparent")
+            freq_frame.pack(anchor="w", padx=16, pady=(0, 12))
+            
+            self.var_frecuencia = ctk.StringVar(value="mensual")
+            for freq in FRECUENCIAS:
+                ctk.CTkRadioButton(
+                    freq_frame,
+                    text=freq["nombre"],
+                    variable=self.var_frecuencia,
+                    value=freq["id"],
+                    font=(FONTS.family, FONTS.size_sm),
+                    command=self._on_frecuencia_change
+                ).pack(side="left", padx=(0, 20))
+            
+            # Label explicativo
+            self.freq_hint_lbl = ctk.CTkLabel(
+                freq_card,
+                text="",
+                font=(FONTS.family, FONTS.size_xs),
+                text_color=COLORS.text_secondary,
+                wraplength=500
+            )
+            self.freq_hint_lbl.pack(anchor="w", padx=16, pady=(0, 12))
+            self._on_frecuencia_change()
 
         # ── Período histórico ──────────────────────────────────────────────────
         self._section(self.body, "1. Período histórico  (para construir la línea base)")
 
-        # Explicación breve
         ctk.CTkLabel(self.body,
                      text="Son los datos pasados con los que se ajusta el modelo. Deben ser representativos\n"
                           "del consumo normal, sin interrupciones ni anomalías.",
@@ -97,7 +145,6 @@ class ConfiguracionPage(ctk.CTkFrame):
 
         rep_card = self._card(self.body)
 
-        # Toggle "tengo datos de reporte"
         toggle_row = ctk.CTkFrame(rep_card, fg_color="transparent")
         toggle_row.pack(fill="x", padx=16, pady=(14, 4))
         self.var_tiene_reporte = ctk.BooleanVar(value=True)
@@ -114,7 +161,7 @@ class ConfiguracionPage(ctk.CTkFrame):
                            default_fin_año=str(date.today().year),
                            min_meses=1)
 
-        # ── Variables ──────────────────────────────────────────────────────────
+        # ── Variables del modelo ───────────────────────────────────────────────
         self._section(self.body, "Variables del modelo")
         vars_card = self._card(self.body)
 
@@ -144,19 +191,6 @@ class ConfiguracionPage(ctk.CTkFrame):
                               font=(FONTS.family, FONTS.size_sm),
                               command=self._add_var_field).pack(anchor="w", padx=16, pady=8)
 
-        # ── Opciones avanzadas ─────────────────────────────────────────────────
-        #self._section(self.body, "Opciones avanzadas")
-        #opt_card = self._card(self.body)
-        #self.var_confianza = ctk.StringVar(value="95")
-        #self._field_dropdown(opt_card, "Nivel de confianza (%)", self.var_confianza, ["90", "95", "99"])
-        #if m["id"] == "regresion":
-         #   self.var_forzar = ctk.BooleanVar(value=False)
-          #  r = ctk.CTkFrame(opt_card, fg_color="transparent")
-           # r.pack(fill="x", padx=16, pady=(0, 12))
-            #ctk.CTkCheckBox(r, text="Forzar intercepto en cero",
-             #               variable=self.var_forzar,
-              #              font=(FONTS.family, FONTS.size_sm)).pack(side="left")
-
         # ── Acciones ──────────────────────────────────────────────────────────
         actions = ctk.CTkFrame(self.body, fg_color="transparent")
         actions.pack(fill="x", pady=(24, 0))
@@ -173,10 +207,105 @@ class ConfiguracionPage(ctk.CTkFrame):
                       height=44, corner_radius=SIZES.button_radius,
                       command=self._guardar_y_continuar).pack(side="left")
 
-    # ── Picker reutilizable ───────────────────────────────────────────────────
+    def _on_frecuencia_change(self):
+        """Actualiza los mensajes cuando cambia la frecuencia seleccionada."""
+        freq_id = self.var_frecuencia.get()
+        self.frecuencia_actual = freq_id
+        
+        if freq_id == "mensual":
+            self.freq_hint_lbl.configure(
+                text="📅 Frecuencia mensual: Las fechas se generan como 'ene-2024', 'feb-2024', etc.\n"
+                     "   Cada fila representa un mes completo de consumo."
+            )
+        elif freq_id == "diario":
+            self.freq_hint_lbl.configure(
+                text="📆 Frecuencia diaria: Se generarán fechas para cada día del período seleccionado.\n"
+                     "   El formato será 'dd/mm/yyyy' (ej. 01/01/2024)."
+            )
+        elif freq_id == "horario":
+            self.freq_hint_lbl.configure(
+                text="⏰ Frecuencia horaria: Se generarán fechas y horas para cada hora del período.\n"
+                     "   El formato será 'dd/mm/yyyy HH:00' (ej. 01/01/2024 00:00).\n"
+                     "   ¡Atención! Un año completo genera 8,760 filas."
+            )
+        
+        # Refrescar el preview de fechas
+        self._refresh_previews()
+
+    def _refresh_previews(self):
+        """Actualiza los labels de preview para ambos períodos."""
+        if hasattr(self, 'lbl_hist_resumen'):
+            self._update_preview("hist")
+        if hasattr(self, 'lbl_rep_resumen'):
+            self._update_preview("rep")
+
+    def _update_preview(self, prefijo):
+        """Actualiza el preview de un período específico."""
+        lbl = getattr(self, f"lbl_{prefijo}_resumen", None)
+        if not lbl:
+            return
+        try:
+            ini = self._fecha(getattr(self, f"var_{prefijo}_ini_mes").get(),
+                              getattr(self, f"var_{prefijo}_ini_año").get())
+            fin = self._fecha(getattr(self, f"var_{prefijo}_fin_mes").get(),
+                              getattr(self, f"var_{prefijo}_fin_año").get())
+            
+            freq_id = self.frecuencia_actual if hasattr(self, 'var_frecuencia') else "mensual"
+            n_periodos = self._calcular_n_periodos(ini, fin, freq_id)
+            
+            if n_periodos <= 0:
+                lbl.configure(text="⚠  Fecha de fin anterior al inicio", text_color=COLORS.error)
+                return
+            
+            min_periodos = 12 if prefijo == "hist" else 1
+            ok = n_periodos >= min_periodos
+            
+            freq_text = self._get_frecuencia_texto(freq_id)
+            sufijo = f"  — mínimo recomendado: {min_periodos} {freq_text}s" if not ok else ""
+            
+            lbl.configure(
+                text=f"{'✓' if ok else '⚠'}  {self._fecha_texto(ini, freq_id)}  →  "
+                     f"{self._fecha_texto(fin, freq_id)}  ({n_periodos} {freq_text}s){sufijo}",
+                text_color=COLORS.success if ok else COLORS.warning,
+            )
+        except Exception:
+            pass
+
+    def _calcular_n_periodos(self, fecha_ini: date, fecha_fin: date, freq_id: str) -> int:
+        """Calcula el número de períodos entre dos fechas según la frecuencia."""
+        if freq_id == "mensual":
+            return (fecha_fin.year - fecha_ini.year) * 12 + (fecha_fin.month - fecha_ini.month) + 1
+        elif freq_id == "diario":
+            return (fecha_fin - fecha_ini).days + 1
+        elif freq_id == "horario":
+            return ((fecha_fin - fecha_ini).days + 1) * 24
+        return 0
+
+    def _fecha_texto(self, fecha: date, freq_id: str) -> str:
+        """Formatea una fecha según la frecuencia."""
+        if freq_id == "mensual":
+            ab = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+            return f"{ab[fecha.month-1]}-{fecha.year}"
+        elif freq_id == "diario":
+            return fecha.strftime("%d/%m/%Y")
+        elif freq_id == "horario":
+            return fecha.strftime("%d/%m/%Y 00:00")
+        return str(fecha)
+
+    def _get_frecuencia_texto(self, freq_id: str) -> str:
+        """Devuelve el texto singular de la frecuencia."""
+        if freq_id == "mensual":
+            return "mese"
+        elif freq_id == "diario":
+            return "día"
+        elif freq_id == "horario":
+            return "hora"
+        return "período"
+
+    # ── Picker reutilizable (modificado para soportar frecuencias) ───────────────────
 
     def _build_picker(self, parent, prefijo, default_ini_año, default_fin_año, min_meses=12):
-        """Construye una fila Desde/Hasta con su resumen. prefijo = 'hist' o 'rep'."""
+        """Construye una fila Desde/Hasta con su resumen."""
         var_ini_mes = ctk.StringVar(value="Enero")
         var_ini_año = ctk.StringVar(value=default_ini_año)
         var_fin_mes = ctk.StringVar(value="Diciembre")
@@ -194,7 +323,7 @@ class ConfiguracionPage(ctk.CTkFrame):
             ctk.CTkOptionMenu(row, variable=var, values=values,
                               font=(FONTS.family, FONTS.size_sm), width=w,
                               fg_color=COLORS.bg_main, text_color=COLORS.text_primary,
-                              command=lambda _: _resumen()).pack(side="left", padx=(0, 5))
+                              command=lambda _: self._update_preview(prefijo)).pack(side="left", padx=(0, 5))
 
         ctk.CTkLabel(row, text="Desde", font=(FONTS.family, FONTS.size_sm, "bold"),
                      text_color=COLORS.text_primary).pack(side="left", padx=(0, 8))
@@ -209,30 +338,8 @@ class ConfiguracionPage(ctk.CTkFrame):
                            text_color=COLORS.text_secondary)
         lbl.pack(anchor="w", padx=16, pady=(0, 10))
         setattr(self, f"lbl_{prefijo}_resumen", lbl)
-
-        def _resumen():
-            try:
-                ini = self._fecha(getattr(self, f"var_{prefijo}_ini_mes").get(),
-                                  getattr(self, f"var_{prefijo}_ini_año").get())
-                fin = self._fecha(getattr(self, f"var_{prefijo}_fin_mes").get(),
-                                  getattr(self, f"var_{prefijo}_fin_año").get())
-                n = (fin.year - ini.year) * 12 + (fin.month - ini.month) + 1
-                if n <= 0:
-                    lbl.configure(text="⚠  Fecha de fin anterior al inicio", text_color=COLORS.error)
-                    return
-                ok = n >= min_meses
-                sufijo = f"  — mínimo recomendado: {min_meses}" if not ok else ""
-                lbl.configure(
-                    text=f"{'✓' if ok else '⚠'}  {getattr(self, f'var_{prefijo}_ini_mes').get()} "
-                         f"{getattr(self, f'var_{prefijo}_ini_año').get()}  →  "
-                         f"{getattr(self, f'var_{prefijo}_fin_mes').get()} "
-                         f"{getattr(self, f'var_{prefijo}_fin_año').get()}  ({n} meses){sufijo}",
-                    text_color=COLORS.success if ok else COLORS.warning,
-                )
-            except Exception:
-                pass
-
-        _resumen()
+        
+        self._update_preview(prefijo)
 
     def _toggle_reporte(self):
         if self.var_tiene_reporte.get():
@@ -240,24 +347,50 @@ class ConfiguracionPage(ctk.CTkFrame):
         else:
             self.rep_picker_frame.pack_forget()
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # ── Helpers modificados para soportar frecuencias ─────────────────────────────────
 
     @staticmethod
     def _fecha(mes_nombre, año):
         return date(int(año), MESES.index(mes_nombre) + 1, 1)
 
-    def _fechas_periodo(self, prefijo):
+    def _generar_fechas(self, prefijo, freq_id: str):
+        """Genera las fechas según la frecuencia seleccionada."""
         ini = self._fecha(getattr(self, f"var_{prefijo}_ini_mes").get(),
                           getattr(self, f"var_{prefijo}_ini_año").get())
         fin = self._fecha(getattr(self, f"var_{prefijo}_fin_mes").get(),
                           getattr(self, f"var_{prefijo}_fin_año").get())
-        fechas, año, mes = [], ini.year, ini.month
-        while date(año, mes, 1) <= fin:
-            fechas.append(date(año, mes, 1))
-            mes += 1
-            if mes > 12:
-                mes = 1; año += 1
+        
+        fechas = []
+        
+        if freq_id == "mensual":
+            año, mes = ini.year, ini.month
+            while date(año, mes, 1) <= fin:
+                fechas.append(date(año, mes, 1))
+                mes += 1
+                if mes > 12:
+                    mes = 1
+                    año += 1
+        elif freq_id == "diario":
+            delta = timedelta(days=1)
+            current = ini
+            while current <= fin:
+                fechas.append(current)
+                current += delta
+        elif freq_id == "horario":
+            # Para horario, generamos datetime con hora
+            from datetime import datetime, timedelta as td
+            dt_ini = datetime(ini.year, ini.month, ini.day, 0, 0)
+            dt_fin = datetime(fin.year, fin.month, fin.day, 23, 0)
+            current = dt_ini
+            while current <= dt_fin:
+                fechas.append(current)
+                current += td(hours=1)
+        
         return fechas
+
+    def _fechas_periodo(self, prefijo):
+        """Versión legacy para compatibilidad."""
+        return self._generar_fechas(prefijo, "mensual")
 
     def _add_var_field(self):
         idx = len(self.var_entries) + 1
@@ -287,9 +420,16 @@ class ConfiguracionPage(ctk.CTkFrame):
         )
         if not path:
             return
-        vars_ind       = [e.get().strip() for e in self.var_entries if e.get().strip()]
-        fechas_hist    = self._fechas_periodo("hist")
-        fechas_rep     = self._fechas_periodo("rep") if self.var_tiene_reporte.get() else []
+        vars_ind = [e.get().strip() for e in self.var_entries if e.get().strip()]
+        
+        # Obtener la frecuencia (solo para regresión)
+        freq_id = "mensual"
+        if self.modelo["id"] == "regresion" and hasattr(self, 'var_frecuencia'):
+            freq_id = self.var_frecuencia.get()
+        
+        fechas_hist = self._generar_fechas("hist", freq_id)
+        fechas_rep = self._generar_fechas("rep", freq_id) if self.var_tiene_reporte.get() else []
+        
         generar_plantilla(
             path=path,
             modelo_id=self.modelo["id"],
@@ -298,7 +438,9 @@ class ConfiguracionPage(ctk.CTkFrame):
             fechas_historico=fechas_hist,
             fechas_reporte=fechas_rep,
             nombre_proyecto=self.entry_proyecto.get(),
+            zona_climatica=self.entry_zona.get() or "",
             unidad=self.entry_unidad.get() or "kWh",
+            frecuencia=freq_id,  # nuevo parámetro
         )
         n = len(fechas_hist) + len(fechas_rep)
         self._toast(f"Plantilla lista — {n} períodos en total ✓")
@@ -310,11 +452,20 @@ class ConfiguracionPage(ctk.CTkFrame):
     def _guardar_sesion(self):
         s = self.app.sesion
         s.nombre_proyecto     = self.entry_proyecto.get()
+        s.zona_climatica     = self.entry_zona.get() if hasattr(self, "entry_zona") else ""
         s.unidad_energia      = self.entry_unidad.get() or "kWh"
         s.col_consumo         = self.entry_dep.get() if hasattr(self, "entry_dep") else "Consumo_kWh"
         s.vars_independientes = [e.get().strip() for e in self.var_entries if e.get().strip()]
-        s.nivel_confianza     = int(self.var_confianza.get()) if hasattr(self, "var_confianza") else 95
+        s.nivel_confianza     = 95  # por defecto
         s.tiene_reporte       = self.var_tiene_reporte.get() if hasattr(self, "var_tiene_reporte") else False
+        
+        # Guardar frecuencia si es regresión
+        if self.modelo and self.modelo["id"] == "regresion" and hasattr(self, 'var_frecuencia'):
+            s.frecuencia_datos = self.var_frecuencia.get()
+        else:
+        # Para otros modelos, siempre es mensual
+            s.frecuencia_datos = "mensual"
+        
         s.periodo_historico   = (f"{self.var_hist_ini_mes.get()} {self.var_hist_ini_año.get()} – "
                                   f"{self.var_hist_fin_mes.get()} {self.var_hist_fin_año.get()}")
         if s.tiene_reporte:
@@ -356,12 +507,3 @@ class ConfiguracionPage(ctk.CTkFrame):
                          font=(FONTS.family, FONTS.size_xs),
                          text_color=COLORS.text_secondary).pack(anchor="w", padx=16, pady=(0, 4))
         return entry
-
-    def _field_dropdown(self, parent, label, var, values):
-        ctk.CTkLabel(parent, text=label,
-                     font=(FONTS.family, FONTS.size_sm, "bold"),
-                     text_color=COLORS.text_primary).pack(anchor="w", padx=16, pady=(12, 2))
-        ctk.CTkOptionMenu(parent, variable=var, values=values,
-                          font=(FONTS.family, FONTS.size_sm),
-                          fg_color=COLORS.bg_main,
-                          text_color=COLORS.text_primary).pack(anchor="w", padx=16, pady=(0, 8))

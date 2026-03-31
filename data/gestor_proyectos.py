@@ -30,6 +30,7 @@ def guardar_proyecto(sesion, ruta_excel: str):
     datos = {
         "nombre_proyecto":      sesion.nombre_proyecto,
         "unidad_energia":       sesion.unidad_energia,
+        "zona_climatica":       sesion.zona_climatica,
         "modelo_id":            sesion.modelo_id,
         "col_consumo":          sesion.col_consumo,
         "vars_independientes":  sesion.vars_independientes,

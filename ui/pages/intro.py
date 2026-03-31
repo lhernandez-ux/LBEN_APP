@@ -95,7 +95,7 @@ class IntroPage(ctk.CTkFrame):
         features = [
             ("📊", "3 Modelos", "Promedio · Cociente · Regresión"),
             ("📥", "Plantilla Excel", "Descarga y llena tus datos"),
-            ("📈", "Gráficos pro", "Línea base · CUSUM · Dispersión"),
+            ("📈", "Gráficos", "Línea base · CUSUM · Dispersión"),
         ]
         for i, (ico, title, sub) in enumerate(features):
             card = ctk.CTkFrame(features_frame, fg_color=COLORS.bg_card, corner_radius=SIZES.card_radius,

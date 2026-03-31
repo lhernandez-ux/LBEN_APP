@@ -29,8 +29,11 @@ class ResultadosPage(ctk.CTkFrame):
         if getattr(self, "_desde", None) == "MonitoreoPage":
             self.app.show_page("MonitoreoPage")
         else:
-            self.app.show_page("DatosPage")
+            self.app.show_page("configuracionPage")
 
+    def _ir_a_monitoreo(self):
+        #Navega directamente a la página de monitoreo.
+        self.app.show_page("MonitoreoPage")
     # ─────────────────────────────────────────────────────────────────────────
     def _build(self):
         self.grid_rowconfigure(1, weight=1)
@@ -54,11 +57,24 @@ class ResultadosPage(ctk.CTkFrame):
             text_color=COLORS.text_primary)
         self.lbl_titulo.grid(row=0, column=1, sticky="w", padx=4)
 
-        ctk.CTkButton(hdr, text="📤 Exportar informe",
+        # Contenedor para los botones de la derecha
+        btn_container = ctk.CTkFrame(hdr, fg_color="transparent")
+        btn_container.grid(row=0, column=2, sticky="e", padx=16)
+
+        # Botón Ir a monitoreo (nuevo)
+        ctk.CTkButton(btn_container, text="📡 Ir a monitoreo", width=120, height=32,
+                      fg_color=COLORS.accent, hover_color=COLORS.accent_hover,
+                      text_color="white",
+                      font=(FONTS.family, FONTS.size_sm, "bold"),
+                      command=self._ir_a_monitoreo
+                      ).pack(side="left", padx=(0, 8))
+
+        # Botón Exportar informe
+        ctk.CTkButton(btn_container, text="📤 Exportar informe",
                       font=(FONTS.family, FONTS.size_sm),
                       fg_color=COLORS.primary, hover_color=COLORS.primary_hover,
-                      height=34, corner_radius=SIZES.button_radius,
-                      command=self._exportar).grid(row=0, column=2, padx=16)
+                      height=32, corner_radius=SIZES.button_radius,
+                      command=self._exportar).pack(side="left")
 
         self.tabs = ctk.CTkTabview(
             self,
@@ -672,8 +688,7 @@ class ResultadosPage(ctk.CTkFrame):
                              border_color=COLORS.border)
         card.pack(fill="x", padx=12, pady=(0, 20))
 
-        cols = ["Período", "Motivo", "Prom. normales",
-                "Prom. anómalos", "Proporción", "Original", "Ajustado", "Δ (%)"]
+        cols = ["Período", "Motivo", "Original", "Ajustado", "Δ (%)"]
         tbl = ctk.CTkFrame(card, fg_color="transparent")
         tbl.pack(fill="x", padx=12, pady=12)
         for c in range(len(cols)):
@@ -700,9 +715,6 @@ class ResultadosPage(ctk.CTkFrame):
             fila = [
                 rec.get("fecha", "—"),
                 rec.get("motivo", "—"),
-                f'{rec["prom_normales"]:,.2f}'  if "prom_normales" in rec else "—",
-                f'{rec["prom_anomalos"]:,.2f}'  if "prom_anomalos" in rec else "—",
-                f'{rec["proporcion"]*100:+.2f}%' if "proporcion" in rec else "—",
                 f'{rec["valor_original"]:,.2f}',
                 f'{rec["valor_ajustado"]:,.2f}' if ajustado else "Sin ajuste",
                 f'{rec["delta_pct"]:+.1f}%'     if "delta_pct" in rec else "—",
@@ -827,7 +839,7 @@ class ResultadosPage(ctk.CTkFrame):
              _color_metrica(r2_adj, 0.85, 0.75),
              "Penaliza vars. innecesarias"),
             ("RMSE",
-             f"{rmse:,.2f} {unidad}".strip(),
+             f"{rmse:,.2f}".strip(),
              COLORS.text_primary,
              "Error cuadrático medio"),
             ("CV(RMSE)",

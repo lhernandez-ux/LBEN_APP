@@ -31,11 +31,14 @@ class ModeloBase(ABC):
         col_consumo: str,
         vars_independientes: List[str],
         nivel_confianza: int = 95,
+        frecuencia: str = "mensual",  # ← NUEVO PARÁMETRO con valor por defecto
     ):
         self.df                 = df.copy()
         self.col_consumo        = col_consumo
         self.vars_independientes = vars_independientes
         self.alpha              = 1 - nivel_confianza / 100
+        self.nivel_confianza    = nivel_confianza
+        self.frecuencia         = frecuencia  # ← ALMACENAR FRECUENCIA
 
         # Salidas — se llenan en ajustar()
         self.consumo_real: List[float] = []
