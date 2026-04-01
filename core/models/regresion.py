@@ -107,16 +107,16 @@ class ModeloRegresion(ModeloBase):
         historial_eliminacion = []
 
         while True:
-            X_cols_act = [df[v].astype(float).values for v in vars_activas]
+            X_cols_act = [df[v].astype(float).values for v in vars_activas]   #Toma cada variable y la convierte en números
             X_act = (
-                np.column_stack(X_cols_act)
+                np.column_stack(X_cols_act)       #Junta todas las variables en una matriz:
                 if len(X_cols_act) > 1
                 else X_cols_act[0].reshape(-1, 1)
             )
-            X_const_act = sm.add_constant(X_act, has_constant="add")
-            ols_act = sm.OLS(y_arr, X_const_act).fit()
+            X_const_act = sm.add_constant(X_act, has_constant="add")   #Agregar intercepto     la columna de 1
+            ols_act = sm.OLS(y_arr, X_const_act).fit() #aqui se calcula todo: coeficientes, p-values, Errores, etc.
 
-            pvals_act = {
+            pvals_act = {                    #Extraer p-values de las variables activas (sin el intercepto)
                 v: float(pv)
                 for v, pv in zip(vars_activas, ols_act.pvalues[1:])
             }
@@ -124,12 +124,12 @@ class ModeloRegresion(ModeloBase):
             # Variable con mayor p-value (la menos significativa)
             peor_var = max(pvals_act, key=lambda v: pvals_act[v])
 
-            if pvals_act[peor_var] >= _PVALUE_UMBRAL:
-                vars_eliminadas.append(peor_var)
+            if pvals_act[peor_var] >= _PVALUE_UMBRAL:           #Si p-value ≥ 0.05 → NO sirve → se elimina
+                vars_eliminadas.append(peor_var) #Guarda que se eliminó
                 historial_eliminacion.append(
                     f"'{peor_var}' eliminada (p-value = {pvals_act[peor_var]:.4f} ≥ {_PVALUE_UMBRAL})"
                 )
-                vars_activas.remove(peor_var)
+                vars_activas.remove(peor_var)      #La quita del modelo
                 if not vars_activas:
                     # Ninguna variable es significativa
                     break
@@ -137,41 +137,43 @@ class ModeloRegresion(ModeloBase):
                 break  # Todas las variables activas son significativas
 
         # ── 3. Modelo final ───────────────────────────────────────────────────
-        if not vars_activas:
+        #Aquí conviertes las variables finales en una ecuación matemática que predice el consumo
+        if not vars_activas:             #El proceso anterior eliminó TODAS las variables
             # Sin variables significativas: advertencia crítica, usar todas
             # para no romper el flujo, pero con aviso explícito.
-            vars_activas = list(self.vars_independientes)
-            sin_vars_sig = True
+            vars_activas = list(self.vars_independientes)  #uso todas las variables
+            sin_vars_sig = True     #marco que el modelo es malo
         else:
             sin_vars_sig = False
 
-        X_cols_fin = [df[v].astype(float).values for v in vars_activas]
+        X_cols_fin = [df[v].astype(float).values for v in vars_activas]   #Toma las variables activas finales y las convierte en números
         X_fin = (
-            np.column_stack(X_cols_fin)
+            np.column_stack(X_cols_fin)   #Construye matriz
             if len(X_cols_fin) > 1
             else X_cols_fin[0].reshape(-1, 1)
         )
-        k_fin = len(vars_activas)
-        X_const_fin = sm.add_constant(X_fin, has_constant="add")
-        ols = sm.OLS(y_arr, X_const_fin).fit()
+        k_fin = len(vars_activas)    #NÚMERO DE VARIABLES FINALES
+        X_const_fin = sm.add_constant(X_fin, has_constant="add")    #Agrega columna de 1 para el intercepto
+        ols = sm.OLS(y_arr, X_const_fin).fit() #Corre el modelo final con las variables seleccionadas
 
-        intercepto = float(ols.params[0])
-        coefs_vals = ols.params[1:].tolist()
-        linea_base = ols.fittedvalues.tolist()
+        intercepto = float(ols.params[0])  #El primer coeficiente es el intercepto (constante), cuando todas las variables= 0
+        coefs_vals = ols.params[1:].tolist() #COEFICIENTES (β₁, β₂.....)
+        linea_base = ols.fittedvalues.tolist() #VALORES ESTIMADOS POR EL MODELO (LBEn) PARA CADA PERÍODO, CON LAS VARIABLES FINALES
 
         # ── 4. Estadísticos del modelo final ─────────────────────────────────
-        r2          = float(ols.rsquared)
-        r2_ajustado = float(ols.rsquared_adj)
-        aic         = float(ols.aic)
-        bic         = float(ols.bic)
-        f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0
-        p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0
+        #ESA PARTE DICE ¿Qué tan bueno, confiable y usable es el modelo?
+        r2          = float(ols.rsquared)   #Mide qué tanto el modelo explica el consumo
+        r2_ajustado = float(ols.rsquared_adj) #Penaliza si metes variables innecesarias
+        aic         = float(ols.aic)  #no creo sea tan necesario:   Son métricas para comparar modelos
+        bic         = float(ols.bic)  #Se usan cuando tienes varios modelos y quieres elegir el mejor
+        f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0  #Si todo el modelo sirve
+        p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0  
 
-        p_valores = {
+        p_valores = {    #aqui es donde se extraen los p-values de las variables finales para reportar en la UI
             col: round(float(pv), 6)
-            for col, pv in zip(vars_activas, ols.pvalues[1:])
+            for col, pv in zip(vars_activas, ols.pvalues[1:])   #Todas son buenas  si el valor es menor a 0.05
         }
-        t_stats = {
+        t_stats = {    #Qué tan fuerte es cada variable
             col: round(float(tv), 4)
             for col, tv in zip(vars_activas, ols.tvalues[1:])
         }
@@ -179,22 +181,23 @@ class ModeloRegresion(ModeloBase):
         # 4a. Correlación de Pearson por variable (resolución, sección 7.4.3)
         pearson_r = {}
         for col, x_col in zip(vars_activas, X_cols_fin):
-            r_val, _ = stats.pearsonr(x_col, y_arr)
+            r_val, _ = stats.pearsonr(x_col, y_arr)     #Relación entre variable y consumo
             pearson_r[col] = round(float(r_val), 4)
 
-        # Variable con mayor |r| → eje X del gráfico de correlación
-        var_principal = max(pearson_r, key=lambda c: abs(pearson_r[c]))
+        # Variable con mayor |r| → eje X del gráfico de correlación   (Lo tengo en el cuaderno)
+        var_principal = max(pearson_r, key=lambda c: abs(pearson_r[c]))   #Variable que más se relaciona con el consumo (la que tiene mayor correlación de Pearson en valor absoluto)
         idx_principal = vars_activas.index(var_principal)
         x_hist_principal = X_cols_fin[idx_principal].tolist()
 
-        # 4b. RMSE y CV(RMSE)
+        # 4b. RMSE y CV(RMSE)               error real del modelo  (cuaderno info)
         residuos = [float(yi) - float(yp) for yi, yp in zip(y, linea_base)]
-        rmse     = float(np.sqrt(np.mean([e ** 2 for e in residuos])))
+        rmse     = float(np.sqrt(np.mean([e ** 2 for e in residuos])))    #Error promedio del modelo   se da en kWh
         media_y  = float(np.mean(y))
-        cv_rmse  = (rmse / media_y * 100) if media_y != 0 else 0.0
+        cv_rmse  = (rmse / media_y * 100) if media_y != 0 else 0.0     #Error en porcentaje
 
-        # 4c. VIF — solo si hay más de una variable activa
-        vif = {}
+        # 4c. VIF (multicolinealidad)  — solo si hay más de una variable activa     
+        # VIF > 10 → problema de coeficientes inestables o  modelo engañoso             
+        vif = {}               #Si variables están duplicando información
         if k_fin > 1:
             from statsmodels.stats.outliers_influence import variance_inflation_factor
             for i, col in enumerate(vars_activas):
@@ -203,26 +206,28 @@ class ModeloRegresion(ModeloBase):
                 )
 
         # 4d. Intervalo de confianza al 95 % (resolución, sección 7.5.3)
-        sem    = float(np.std(residuos, ddof=k_fin + 1)) if n > k_fin + 1 else rmse
+        sem    = float(np.std(residuos, ddof=k_fin + 1)) if n > k_fin + 1 else rmse    #Ajusta el error según número de variables
         t_crit = stats.t.ppf(
             1 - (1 - self.nivel_confianza / 100) / 2,
-            df=max(n - k_fin - 1, 1),
+            df=max(n - k_fin - 1, 1), 
         )
         ic_sup = [yp + t_crit * sem for yp in linea_base]
         ic_inf = [yp - t_crit * sem for yp in linea_base]
 
         # ── 5. Verificación del modelo (Anexo 3, resolución) ─────────────────
+        # ayuda a saber ¿Qué tan bien predice el modelo cada dato real?
         # % Error = (consumo_medido − consumo_LBEn) / consumo_LBEn × 100
-        errores_pct = []
-        for yi, yp in zip(y, linea_base):
+        errores_pct = []  #(cuaderno)
+        for yi, yp in zip(y, linea_base):   #recorre cada dato real que es el consumo real (yi) y su predicción (yp) para calcular el error porcentual
             if yp != 0:
-                errores_pct.append(abs((yi - yp) / yp) * 100)
+                errores_pct.append(abs((yi - yp) / yp) * 100)  #Esto calcula el error porcentual
             else:
                 errores_pct.append(0.0)
 
-        error_promedio = float(np.mean(errores_pct))
-        n_obs_sobre_5pct = sum(1 for e in errores_pct if e > 5.0)
-        prop_sobre_5pct  = n_obs_sobre_5pct / n if n > 0 else 0.0
+        error_promedio = float(np.mean(errores_pct)) #En promedio, cuánto se equivoca el modelo
+        n_obs_sobre_5pct = sum(1 for e in errores_pct if e > 5.0) #Cuenta cuántos datos tienen error “alto”  superan 5%
+        prop_sobre_5pct  = n_obs_sobre_5pct / n if n > 0 else 0.0  #Qué porcentaje de datos falla fuerte
+        #Si más del 20% de los datos tienen error > 5% → PROBLEMA
 
         # ── 6. Advertencias según Resolución UPME 16/2024 ────────────────────
         advertencias = []
