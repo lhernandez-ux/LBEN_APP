@@ -4,49 +4,6 @@ core/models/regresion.py
 Modelo Estadístico de Regresión Lineal — Resolución UPME 16/2024
 
   Y = β₀ + β₁·X₁ + β₂·X₂ + ... + βₖ·Xₖ + ε
-
-Requisitos según Resolución UPME 16/2024 (sección 7.5.3 y Anexo 3):
-
-  1. Normalización del consumo a 30 días (ecuación 1 de la resolución).
-     Consumo_normalizado = (Consumo_factura / Días_facturación) × 30
-     ─ Esto se aplica ANTES de llamar al modelo (en la carga de datos),
-       pero el modelo lo verifica y advierte si detecta variación sospechosa.
-
-  2. Selección de variables relevantes:
-     ─ Se corre una regresión inicial con TODAS las variables suministradas.
-     ─ Cualquier variable con p-value ≥ 0.05 se elimina.
-     ─ Se recorre el modelo sin las variables no significativas (stepwise
-       backward según la resolución: "correr nuevamente el modelo estadístico
-       sin tener en cuenta la variable que no produce cambios significativos").
-     ─ Si ninguna variable resulta significativa, se lanza advertencia crítica.
-
-  3. Estadísticos exigidos por la resolución:
-     ─ R² y R² ajustado.
-     ─ P-value por variable (columna Probabilidad del output de Excel).
-     ─ F-estadístico y su p-value (significancia global).
-     ─ CV(RMSE) ≤ 20 % (precisión del modelo).
-     ─ VIF si hay más de una variable (multicolinealidad).
-     ─ Correlación de Pearson (r) entre cada variable y el consumo.
-
-  4. Verificación del modelo:
-     ─ % Error por observación = (consumo_real − LBEn) / LBEn × 100.
-     ─ Error promedio reportado (resolución lo muestra en Anexo 3).
-     ─ Advertencia si más del 20 % de observaciones superan el 5 % de error.
-
-  5. Línea meta (Anexo 3, resolución UPME 16/2024):
-     ─ Se identifican los puntos donde consumo_real < LBEn (mejores desempeños).
-     ─ Con esos puntos se corre una nueva regresión lineal simple con la
-       variable principal (mayor |r de Pearson|).
-     ─ La línea meta es la ecuación resultante de esa regresión de mejores
-       desempeños evaluada sobre el rango completo de la variable principal.
-     ─ Potencial de ahorro mensual = LBEn - línea_meta (para cada período).
-
-  6. Variable principal para gráfico:
-     ─ La que tenga mayor |r de Pearson| con el consumo.
-
-  7. Mínimo de datos:
-     ─ Al menos 3 períodos por variable independiente (la resolución recomienda
-       mínimo 36 datos mensuales —3 años— pero acepta menos si se justifica).
 """
 
 import numpy as np
