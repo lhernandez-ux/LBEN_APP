@@ -33,10 +33,18 @@ Requisitos según Resolución UPME 16/2024 (sección 7.5.3 y Anexo 3):
      ─ Error promedio reportado (resolución lo muestra en Anexo 3).
      ─ Advertencia si más del 20 % de observaciones superan el 5 % de error.
 
-  5. Variable principal para gráfico:
+  5. Línea meta (Anexo 3, resolución UPME 16/2024):
+     ─ Se identifican los puntos donde consumo_real < LBEn (mejores desempeños).
+     ─ Con esos puntos se corre una nueva regresión lineal simple con la
+       variable principal (mayor |r de Pearson|).
+     ─ La línea meta es la ecuación resultante de esa regresión de mejores
+       desempeños evaluada sobre el rango completo de la variable principal.
+     ─ Potencial de ahorro mensual = LBEn - línea_meta (para cada período).
+
+  6. Variable principal para gráfico:
      ─ La que tenga mayor |r de Pearson| con el consumo.
 
-  6. Mínimo de datos:
+  7. Mínimo de datos:
      ─ Al menos 3 períodos por variable independiente (la resolución recomienda
        mínimo 36 datos mensuales —3 años— pero acepta menos si se justifica).
 """
@@ -71,7 +79,8 @@ class ModeloRegresion(ModeloBase):
     3. Selección backward: elimina variables con p-value ≥ 0.05 y recorre.
     4. Cálculo de estadísticos completos sobre el modelo final.
     5. Verificación del modelo (% error por observación).
-    6. Construcción de advertencias según umbrales de la resolución.
+    6. Línea meta: regresión sobre los mejores desempeños (Anexo 3).
+    7. Construcción de advertencias según umbrales de la resolución.
     """
 
     def ajustar(self):
@@ -107,16 +116,16 @@ class ModeloRegresion(ModeloBase):
         historial_eliminacion = []
 
         while True:
-            X_cols_act = [df[v].astype(float).values for v in vars_activas]   #Toma cada variable y la convierte en números
+            X_cols_act = [df[v].astype(float).values for v in vars_activas]
             X_act = (
-                np.column_stack(X_cols_act)       #Junta todas las variables en una matriz:
+                np.column_stack(X_cols_act)
                 if len(X_cols_act) > 1
                 else X_cols_act[0].reshape(-1, 1)
             )
-            X_const_act = sm.add_constant(X_act, has_constant="add")   #Agregar intercepto     la columna de 1
-            ols_act = sm.OLS(y_arr, X_const_act).fit() #aqui se calcula todo: coeficientes, p-values, Errores, etc.
+            X_const_act = sm.add_constant(X_act, has_constant="add")
+            ols_act = sm.OLS(y_arr, X_const_act).fit()
 
-            pvals_act = {                    #Extraer p-values de las variables activas (sin el intercepto)
+            pvals_act = {
                 v: float(pv)
                 for v, pv in zip(vars_activas, ols_act.pvalues[1:])
             }
@@ -124,80 +133,74 @@ class ModeloRegresion(ModeloBase):
             # Variable con mayor p-value (la menos significativa)
             peor_var = max(pvals_act, key=lambda v: pvals_act[v])
 
-            if pvals_act[peor_var] >= _PVALUE_UMBRAL:           #Si p-value ≥ 0.05 → NO sirve → se elimina
-                vars_eliminadas.append(peor_var) #Guarda que se eliminó
+            if pvals_act[peor_var] >= _PVALUE_UMBRAL:
+                vars_eliminadas.append(peor_var)
                 historial_eliminacion.append(
                     f"'{peor_var}' eliminada (p-value = {pvals_act[peor_var]:.4f} ≥ {_PVALUE_UMBRAL})"
                 )
-                vars_activas.remove(peor_var)      #La quita del modelo
+                vars_activas.remove(peor_var)
                 if not vars_activas:
-                    # Ninguna variable es significativa
                     break
             else:
-                break  # Todas las variables activas son significativas
+                break
 
         # ── 3. Modelo final ───────────────────────────────────────────────────
-        #Aquí conviertes las variables finales en una ecuación matemática que predice el consumo
-        if not vars_activas:             #El proceso anterior eliminó TODAS las variables
-            # Sin variables significativas: advertencia crítica, usar todas
-            # para no romper el flujo, pero con aviso explícito.
-            vars_activas = list(self.vars_independientes)  #uso todas las variables
-            sin_vars_sig = True     #marco que el modelo es malo
+        if not vars_activas:
+            vars_activas = list(self.vars_independientes)
+            sin_vars_sig = True
         else:
             sin_vars_sig = False
 
-        X_cols_fin = [df[v].astype(float).values for v in vars_activas]   #Toma las variables activas finales y las convierte en números
+        X_cols_fin = [df[v].astype(float).values for v in vars_activas]
         X_fin = (
-            np.column_stack(X_cols_fin)   #Construye matriz
+            np.column_stack(X_cols_fin)
             if len(X_cols_fin) > 1
             else X_cols_fin[0].reshape(-1, 1)
         )
-        k_fin = len(vars_activas)    #NÚMERO DE VARIABLES FINALES
-        X_const_fin = sm.add_constant(X_fin, has_constant="add")    #Agrega columna de 1 para el intercepto
-        ols = sm.OLS(y_arr, X_const_fin).fit() #Corre el modelo final con las variables seleccionadas
+        k_fin = len(vars_activas)
+        X_const_fin = sm.add_constant(X_fin, has_constant="add")
+        ols = sm.OLS(y_arr, X_const_fin).fit()
 
-        intercepto = float(ols.params[0])  #El primer coeficiente es el intercepto (constante), cuando todas las variables= 0
-        coefs_vals = ols.params[1:].tolist() #COEFICIENTES (β₁, β₂.....)
-        linea_base = ols.fittedvalues.tolist() #VALORES ESTIMADOS POR EL MODELO (LBEn) PARA CADA PERÍODO, CON LAS VARIABLES FINALES
+        intercepto = float(ols.params[0])
+        coefs_vals = ols.params[1:].tolist()
+        linea_base = ols.fittedvalues.tolist()
 
         # ── 4. Estadísticos del modelo final ─────────────────────────────────
-        #ESA PARTE DICE ¿Qué tan bueno, confiable y usable es el modelo?
-        r2          = float(ols.rsquared)   #Mide qué tanto el modelo explica el consumo
-        r2_ajustado = float(ols.rsquared_adj) #Penaliza si metes variables innecesarias
-        aic         = float(ols.aic)  #no creo sea tan necesario:   Son métricas para comparar modelos
-        bic         = float(ols.bic)  #Se usan cuando tienes varios modelos y quieres elegir el mejor
-        f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0  #Si todo el modelo sirve
-        p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0  
+        r2          = float(ols.rsquared)
+        r2_ajustado = float(ols.rsquared_adj)
+        aic         = float(ols.aic)
+        bic         = float(ols.bic)
+        f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0
+        p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0
 
-        p_valores = {    #aqui es donde se extraen los p-values de las variables finales para reportar en la UI
+        p_valores = {
             col: round(float(pv), 6)
-            for col, pv in zip(vars_activas, ols.pvalues[1:])   #Todas son buenas  si el valor es menor a 0.05
+            for col, pv in zip(vars_activas, ols.pvalues[1:])
         }
-        t_stats = {    #Qué tan fuerte es cada variable
+        t_stats = {
             col: round(float(tv), 4)
             for col, tv in zip(vars_activas, ols.tvalues[1:])
         }
 
-        # 4a. Correlación de Pearson por variable (resolución, sección 7.4.3)
+        # 4a. Correlación de Pearson por variable
         pearson_r = {}
         for col, x_col in zip(vars_activas, X_cols_fin):
-            r_val, _ = stats.pearsonr(x_col, y_arr)     #Relación entre variable y consumo
+            r_val, _ = stats.pearsonr(x_col, y_arr)
             pearson_r[col] = round(float(r_val), 4)
 
-        # Variable con mayor |r| → eje X del gráfico de correlación   (Lo tengo en el cuaderno)
-        var_principal = max(pearson_r, key=lambda c: abs(pearson_r[c]))   #Variable que más se relaciona con el consumo (la que tiene mayor correlación de Pearson en valor absoluto)
+        # Variable con mayor |r| → eje X del gráfico de correlación
+        var_principal = max(pearson_r, key=lambda c: abs(pearson_r[c]))
         idx_principal = vars_activas.index(var_principal)
         x_hist_principal = X_cols_fin[idx_principal].tolist()
 
-        # 4b. RMSE y CV(RMSE)               error real del modelo  (cuaderno info)
+        # 4b. RMSE y CV(RMSE)
         residuos = [float(yi) - float(yp) for yi, yp in zip(y, linea_base)]
-        rmse     = float(np.sqrt(np.mean([e ** 2 for e in residuos])))    #Error promedio del modelo   se da en kWh
+        rmse     = float(np.sqrt(np.mean([e ** 2 for e in residuos])))
         media_y  = float(np.mean(y))
-        cv_rmse  = (rmse / media_y * 100) if media_y != 0 else 0.0     #Error en porcentaje
+        cv_rmse  = (rmse / media_y * 100) if media_y != 0 else 0.0
 
-        # 4c. VIF (multicolinealidad)  — solo si hay más de una variable activa     
-        # VIF > 10 → problema de coeficientes inestables o  modelo engañoso             
-        vif = {}               #Si variables están duplicando información
+        # 4c. VIF (multicolinealidad)
+        vif = {}
         if k_fin > 1:
             from statsmodels.stats.outliers_influence import variance_inflation_factor
             for i, col in enumerate(vars_activas):
@@ -205,34 +208,100 @@ class ModeloRegresion(ModeloBase):
                     float(variance_inflation_factor(X_const_fin, i + 1)), 2
                 )
 
-        # 4d. Intervalo de confianza al 95 % (resolución, sección 7.5.3)
-        sem    = float(np.std(residuos, ddof=k_fin + 1)) if n > k_fin + 1 else rmse    #Ajusta el error según número de variables
+        # 4d. Intervalo de confianza al 95 %
+        sem    = float(np.std(residuos, ddof=k_fin + 1)) if n > k_fin + 1 else rmse
         t_crit = stats.t.ppf(
             1 - (1 - self.nivel_confianza / 100) / 2,
-            df=max(n - k_fin - 1, 1), 
+            df=max(n - k_fin - 1, 1),
         )
         ic_sup = [yp + t_crit * sem for yp in linea_base]
         ic_inf = [yp - t_crit * sem for yp in linea_base]
 
         # ── 5. Verificación del modelo (Anexo 3, resolución) ─────────────────
-        # ayuda a saber ¿Qué tan bien predice el modelo cada dato real?
-        # % Error = (consumo_medido − consumo_LBEn) / consumo_LBEn × 100
-        errores_pct = []  #(cuaderno)
-        for yi, yp in zip(y, linea_base):   #recorre cada dato real que es el consumo real (yi) y su predicción (yp) para calcular el error porcentual
+        errores_pct = []
+        for yi, yp in zip(y, linea_base):
             if yp != 0:
-                errores_pct.append(abs((yi - yp) / yp) * 100)  #Esto calcula el error porcentual
+                errores_pct.append(abs((yi - yp) / yp) * 100)
             else:
                 errores_pct.append(0.0)
 
-        error_promedio = float(np.mean(errores_pct)) #En promedio, cuánto se equivoca el modelo
-        n_obs_sobre_5pct = sum(1 for e in errores_pct if e > 5.0) #Cuenta cuántos datos tienen error “alto”  superan 5%
-        prop_sobre_5pct  = n_obs_sobre_5pct / n if n > 0 else 0.0  #Qué porcentaje de datos falla fuerte
-        #Si más del 20% de los datos tienen error > 5% → PROBLEMA
+        error_promedio = float(np.mean(errores_pct))
+        n_obs_sobre_5pct = sum(1 for e in errores_pct if e > 5.0)
+        prop_sobre_5pct  = n_obs_sobre_5pct / n if n > 0 else 0.0
 
-        # ── 6. Advertencias según Resolución UPME 16/2024 ────────────────────
+        # ── 6. Línea meta — Mejores desempeños energéticos (Anexo 3) ─────────
+        # Según la resolución (sección 8.1, Anexo 3):
+        #   "Diferencia en el mes m = valor real − valor LBEn"
+        #   "Aquellos resultados donde la diferencia es negativa representan
+        #    el mejor desempeño energético."
+        #   Con esos puntos se construye una nueva regresión (línea de tendencia)
+        #   usando la variable principal, y el potencial de ahorro = LBEn - línea_meta.
+
+        x_principal_arr = np.array(x_hist_principal, dtype=float)
+
+        # Índices donde consumo_real < LBEn (mejores desempeños)
+        indices_mejores = [
+            i for i, (yi, yp) in enumerate(zip(y, linea_base))
+            if float(yi) < float(yp)
+        ]
+
+        linea_meta           = None   # valores de la línea meta para cada período
+        coef_meta            = None   # (intercepto_meta, pendiente_meta)
+        r2_meta              = None
+        potencial_ahorro_abs = None   # kWh/mes de ahorro potencial por período
+        potencial_ahorro_pct = None   # % de ahorro potencial por período
+        ahorro_promedio_pct  = None
+        # Puntos para marcar en el gráfico: (x, y_real, índice, es_mejor_desempeno)
+        puntos_mejor_desempeno = []
+
+        if len(indices_mejores) >= 2:
+            x_meta = x_principal_arr[indices_mejores]
+            y_meta = np.array([float(y[i]) for i in indices_mejores])
+
+            # Regresión lineal simple sobre los mejores desempeños
+            X_meta_const = sm.add_constant(x_meta.reshape(-1, 1), has_constant="add")
+            ols_meta = sm.OLS(y_meta, X_meta_const).fit()
+
+            intercepto_meta = float(ols_meta.params[0])
+            pendiente_meta  = float(ols_meta.params[1])
+            r2_meta         = float(ols_meta.rsquared)
+            coef_meta       = (intercepto_meta, pendiente_meta)
+
+            # Evaluar la línea meta para TODOS los períodos (usando x_principal)
+            linea_meta = [
+                pendiente_meta * float(xi) + intercepto_meta
+                for xi in x_principal_arr
+            ]
+
+            # Potencial de ahorro = LBEn - línea_meta (positivo = hay ahorro)
+            potencial_ahorro_abs = [
+                round(float(lb) - float(lm), 2)
+                for lb, lm in zip(linea_base, linea_meta)
+            ]
+            potencial_ahorro_pct = [
+                round((float(lb) - float(lm)) / float(lb) * 100, 2)
+                if float(lb) != 0 else 0.0
+                for lb, lm in zip(linea_base, linea_meta)
+            ]
+            ahorro_promedio_pct = round(
+                float(np.mean([p for p in potencial_ahorro_pct if p > 0] or [0.0])), 2
+            )
+
+        # Construir lista de puntos para el gráfico de correlación,
+        # clasificados como "mejor desempeño" o "sobre LBEn"
+        for i in range(n):
+            es_mejor = float(y[i]) < float(linea_base[i])
+            puntos_mejor_desempeno.append({
+                "x":          float(x_principal_arr[i]),
+                "y_real":     float(y[i]),
+                "y_lben":     float(linea_base[i]),
+                "es_mejor":   es_mejor,
+                "periodo":    str(fechas[i]) if i < len(fechas) else str(i + 1),
+            })
+
+        # ── 7. Advertencias según Resolución UPME 16/2024 ────────────────────
         advertencias = []
 
-        # 6.0 Variables eliminadas por no ser significativas
         if historial_eliminacion:
             advertencias.append(
                 "Selección automática de variables (backward stepwise, "
@@ -242,7 +311,6 @@ class ModeloRegresion(ModeloBase):
                 + ", ".join(vars_activas) + "."
             )
 
-        # 6.1 Ninguna variable resultó significativa
         if sin_vars_sig:
             advertencias.append(
                 "⚠ CRÍTICO: Ninguna variable independiente resultó significativa "
@@ -250,7 +318,6 @@ class ModeloRegresion(ModeloBase):
                 "la resolución UPME 16/2024. Revise las variables seleccionadas."
             )
 
-        # 6.2 R² mínimo 0.75 (recomendado por la resolución, sección 7.4.3)
         if r2 < _R2_MINIMO:
             advertencias.append(
                 f"R² = {r2:.4f} está por debajo del mínimo recomendado "
@@ -260,7 +327,6 @@ class ModeloRegresion(ModeloBase):
                 "sección 7.5.3)."
             )
 
-        # 6.3 CV(RMSE) ≤ 20 %
         if cv_rmse > _CV_MAXIMO:
             advertencias.append(
                 f"CV(RMSE) = {cv_rmse:.1f}% supera el límite recomendado del "
@@ -268,7 +334,6 @@ class ModeloRegresion(ModeloBase):
                 "promedio. Considere agregar variables relevantes adicionales."
             )
 
-        # 6.4 Modelo global no significativo
         if p_valor_f >= _PVALUE_UMBRAL:
             advertencias.append(
                 f"El modelo global no es estadísticamente significativo "
@@ -276,7 +341,6 @@ class ModeloRegresion(ModeloBase):
                 "no explican el consumo mejor que el azar."
             )
 
-        # 6.5 VIF > 10 indica multicolinealidad alta
         if vif:
             vars_vif_alto = [col for col, v in vif.items() if v > _VIF_MAXIMO]
             if vars_vif_alto:
@@ -286,7 +350,6 @@ class ModeloRegresion(ModeloBase):
                     "variables correlacionadas para mejorar la estabilidad del modelo."
                 )
 
-        # 6.6 Correlaciones bajas (|r| < 0.50)
         vars_corr_baja = [
             col for col, r in pearson_r.items() if abs(r) < _PEARSON_MINIMO
         ]
@@ -297,7 +360,6 @@ class ModeloRegresion(ModeloBase):
                 "realmente relevantes para el consumo energético."
             )
 
-        # 6.7 Verificación del modelo (Anexo 3)
         if prop_sobre_5pct > _PROP_OBS_ERROR:
             advertencias.append(
                 f"Verificación del modelo (Anexo 3, resolución UPME 16/2024): "
@@ -306,30 +368,52 @@ class ModeloRegresion(ModeloBase):
                 "El modelo puede no estimar de forma confiable el consumo de energía."
             )
 
-        # ── 7. Coeficientes y ecuación final ─────────────────────────────────
+        if len(indices_mejores) < 2:
+            advertencias.append(
+                "Línea meta: no se encontraron suficientes períodos con consumo "
+                "por debajo de la LBEn (mínimo 2) para construir la línea meta "
+                "de mejores desempeños (Anexo 3, resolución UPME 16/2024)."
+            )
+
+        # ── 8. Coeficientes y ecuación final ─────────────────────────────────
         coefs_dict = {"Intercepto": round(intercepto, 6)}
         for nombre, val in zip(vars_activas, coefs_vals):
             coefs_dict[nombre] = round(val, 6)
 
-        # ── 8. Construir ecuación legible ─────────────────────────────────────
         partes_ec = [f"{intercepto:+.4f}"]
         for nombre, val in zip(vars_activas, coefs_vals):
             signo = "+" if val >= 0 else ""
             partes_ec.append(f"{signo}{val:.4f}·{nombre}")
         ecuacion_str = "E = " + " ".join(partes_ec)
 
-        # ── 9. Verificación por observación (tabla para la UI) ────────────────
+        # ── 9. Ecuación de la línea meta (para mostrar en gráfico) ───────────
+        ecuacion_meta_str = None
+        if coef_meta is not None:
+            i_meta, p_meta = coef_meta
+            signo_m = "+" if i_meta >= 0 else ""
+            ecuacion_meta_str = (
+                f"E_meta = {p_meta:.4f}·{var_principal} {signo_m}{i_meta:.4f}  "
+                f"(R²={r2_meta:.3f})"
+            )
+
+        # ── 10. Verificación por observación (tabla para la UI) ───────────────
         tabla_verificacion = []
         for i, (yi, yp, ep) in enumerate(zip(y, linea_base, errores_pct)):
-            tabla_verificacion.append({
-                "periodo":           str(fechas[i]) if i < len(fechas) else str(i + 1),
-                "consumo_real":      round(float(yi), 2),
-                "consumo_lben":      round(float(yp), 2),
-                "error_pct":         round(ep, 2),
-                "supera_umbral":     ep > 5.0,
-            })
+            fila = {
+                "periodo":       str(fechas[i]) if i < len(fechas) else str(i + 1),
+                "consumo_real":  round(float(yi), 2),
+                "consumo_lben":  round(float(yp), 2),
+                "error_pct":     round(ep, 2),
+                "supera_umbral": ep > 5.0,
+                "es_mejor_desempeno": float(yi) < float(yp),
+            }
+            if linea_meta is not None:
+                fila["consumo_meta"]         = round(float(linea_meta[i]), 2)
+                fila["potencial_ahorro_abs"] = round(float(potencial_ahorro_abs[i]), 2)
+                fila["potencial_ahorro_pct"] = round(float(potencial_ahorro_pct[i]), 2)
+            tabla_verificacion.append(fila)
 
-        # ── 10. Guardar params ────────────────────────────────────────────────
+        # ── 11. Guardar params ────────────────────────────────────────────────
         self.params = {
             # ── Ecuación del modelo ──────────────────────────────────────────
             "coeficientes":          coefs_dict,
@@ -338,7 +422,7 @@ class ModeloRegresion(ModeloBase):
             "vars_eliminadas":       vars_eliminadas,
             "historial_eliminacion": historial_eliminacion,
 
-            # ── Bondad de ajuste (requeridos por la resolución) ──────────────
+            # ── Bondad de ajuste ─────────────────────────────────────────────
             "r2":                    round(r2, 4),
             "r2_ajustado":           round(r2_ajustado, 4),
             "rmse":                  round(rmse, 4),
@@ -350,7 +434,7 @@ class ModeloRegresion(ModeloBase):
             "f_estadistico":         round(f_stat, 4),
             "p_valor_f":             round(p_valor_f, 6),
 
-            # ── Correlación de Pearson por variable ──────────────────────────
+            # ── Correlación de Pearson ───────────────────────────────────────
             "pearson_r":             pearson_r,
             "var_principal":         var_principal,
 
@@ -366,6 +450,18 @@ class ModeloRegresion(ModeloBase):
             "n_obs_sobre_5pct":      n_obs_sobre_5pct,
             "prop_sobre_5pct":       round(prop_sobre_5pct * 100, 1),
             "tabla_verificacion":    tabla_verificacion,
+
+            # ── Línea meta — Mejores desempeños (Anexo 3) ────────────────────
+            "linea_meta":                 [round(v, 2) for v in linea_meta] if linea_meta else [],
+            "coef_meta":                  list(coef_meta) if coef_meta else [],
+            "r2_meta":                    round(r2_meta, 4) if r2_meta is not None else None,
+            "ecuacion_meta":              ecuacion_meta_str,
+            "potencial_ahorro_abs":       potencial_ahorro_abs or [],
+            "potencial_ahorro_pct":       potencial_ahorro_pct or [],
+            "ahorro_promedio_pct":        ahorro_promedio_pct or 0.0,
+            "n_mejores_desempenos":       len(indices_mejores),
+            "indices_mejores_desempenos": indices_mejores,
+            "puntos_mejor_desempeno":     puntos_mejor_desempeno,
 
             # ── Para IC en predicción del período de reporte ─────────────────
             "sem":                   round(sem, 4),
@@ -393,9 +489,6 @@ class ModeloRegresion(ModeloBase):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Función auxiliar: normalización a 30 días (ecuación 1, resolución UPME 16/2024)
-# "Consumo_normalizado = (Consumo_factura / Días_facturación) × 30"
-# Se expone aquí para que el módulo de carga de datos la use antes de
-# construir df_historico y df_reporte.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def normalizar_consumo_30_dias(consumo_factura: float, dias_facturacion: int) -> float:
@@ -404,16 +497,6 @@ def normalizar_consumo_30_dias(consumo_factura: float, dias_facturacion: int) ->
 
     Ecuación 1 — Resolución UPME 16/2024, sección 7.5:
         Consumo_normalizado = (Consumo_factura / Días_facturación) × 30
-
-    Args:
-        consumo_factura:   Valor total del consumo registrado en la factura (kWh).
-        dias_facturacion:  Número de días del período de facturación.
-
-    Returns:
-        Consumo normalizado a 30 días (kWh/mes).
-
-    Raises:
-        ValueError: Si dias_facturacion es cero o negativo.
     """
     if dias_facturacion <= 0:
         raise ValueError(
