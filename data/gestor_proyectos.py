@@ -35,9 +35,10 @@ def guardar_proyecto(sesion, ruta_excel: str):
         "col_consumo":          sesion.col_consumo,
         "vars_independientes":  sesion.vars_independientes,
         "nivel_confianza":      sesion.nivel_confianza,
-        "periodo_historico":    sesion.periodo_historico,
+        "periodo_base":    sesion.periodo_base,
         "periodo_reporte":      sesion.periodo_reporte,
         "tiene_reporte":        sesion.tiene_reporte,
+        "frecuencia":           getattr(sesion, "frecuencia", "mensual"),
         "ruta_excel":           ruta_excel,
         "guardado_en":          datetime.now().isoformat(timespec="seconds"),
     }

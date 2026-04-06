@@ -2,7 +2,7 @@
 ui/pages/configuracion.py
 =========================
 Configuración con DOS períodos:
-  • Período histórico  → entrena el modelo (línea base)
+  • Período base  → entrena el modelo (línea base)
   • Período de reporte → se compara contra la línea base (opcional)
   
 Para regresión lineal se puede elegir la frecuencia de los datos:
@@ -117,8 +117,8 @@ class ConfiguracionPage(ctk.CTkFrame):
             self.freq_hint_lbl.pack(anchor="w", padx=16, pady=(0, 12))
             self._on_frecuencia_change()
 
-        # ── Período histórico ──────────────────────────────────────────────────
-        self._section(self.body, "1. Período histórico  (para construir la línea base)")
+        # ── Período base ──────────────────────────────────────────────────
+        self._section(self.body, "1. Período base  (para construir la línea base)")
 
         ctk.CTkLabel(self.body,
                      text="Son los datos pasados con los que se ajusta el modelo. Deben ser representativos\n"
@@ -134,7 +134,7 @@ class ConfiguracionPage(ctk.CTkFrame):
                            min_meses=12)
 
         # ── Período de reporte ────────────────────────────────────────────────
-        self._section(self.body, "2. Período de reporte  (para evaluar el desempeño)")
+        self._section(self.body, "2. Período de evaluación  (para evaluar el desempeño)")
 
         ctk.CTkLabel(self.body,
                      text="Son los datos nuevos que se comparan contra la línea base para detectar\n"
@@ -149,7 +149,7 @@ class ConfiguracionPage(ctk.CTkFrame):
         toggle_row.pack(fill="x", padx=16, pady=(14, 4))
         self.var_tiene_reporte = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(toggle_row,
-                        text="Tengo datos de reporte para evaluar",
+                        text="Tengo datos de Evaluación (reporte)",
                         variable=self.var_tiene_reporte,
                         font=(FONTS.family, FONTS.size_sm),
                         command=self._toggle_reporte).pack(side="left")
@@ -435,7 +435,7 @@ class ConfiguracionPage(ctk.CTkFrame):
             modelo_id=self.modelo["id"],
             col_consumo=self.entry_dep.get() or "Consumo_kWh",
             vars_independientes=vars_ind,
-            fechas_historico=fechas_hist,
+            fechas_base=fechas_hist,
             fechas_reporte=fechas_rep,
             nombre_proyecto=self.entry_proyecto.get(),
             zona_climatica=self.entry_zona.get() or "",
@@ -461,12 +461,12 @@ class ConfiguracionPage(ctk.CTkFrame):
         
         # Guardar frecuencia si es regresión
         if self.modelo and self.modelo["id"] == "regresion" and hasattr(self, 'var_frecuencia'):
-            s.frecuencia_datos = self.var_frecuencia.get()
+            s.frecuencia = self.var_frecuencia.get()
         else:
         # Para otros modelos, siempre es mensual
-            s.frecuencia_datos = "mensual"
+            s.frecuencia = "mensual"
         
-        s.periodo_historico   = (f"{self.var_hist_ini_mes.get()} {self.var_hist_ini_año.get()} – "
+        s.periodo_base   = (f"{self.var_hist_ini_mes.get()} {self.var_hist_ini_año.get()} – "
                                   f"{self.var_hist_fin_mes.get()} {self.var_hist_fin_año.get()}")
         if s.tiene_reporte:
             s.periodo_reporte = (f"{self.var_rep_ini_mes.get()} {self.var_rep_ini_año.get()} – "

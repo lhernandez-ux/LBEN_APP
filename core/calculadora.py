@@ -5,11 +5,11 @@ Orquestador principal.
 
 Flujo:
   0. Ajuste No Rutinario (ANR) — corrige meses anómalos marcados por el usuario.
-  1. Ajusta el modelo con df_historico (ya corregido por ANR).
-  2. Genera predicciones para df_historico (línea base del período histórico).
+  1. Ajusta el modelo con df_base (ya corregido por ANR).
+  2. Genera predicciones para df_base (línea base del período base).
   3. Si existe df_reporte, genera predicciones para esos datos nuevos
      y calcula desempeño y CUSUM sobre el período de reporte.
-  4. Si no hay df_reporte, el análisis se hace solo sobre el histórico.
+  4. Si no hay df_reporte, el análisis se hace solo sobre el base.
   
 Soporta diferentes frecuencias para el modelo de regresión.
 """
@@ -31,7 +31,7 @@ MODELOS = {
 
 
 def calcular(
-    df_historico: pd.DataFrame,
+    df_base: pd.DataFrame,
     df_reporte:   Optional[pd.DataFrame],
     modelo_id:    str,
     col_consumo:  str,
@@ -51,7 +51,7 @@ def calcular(
     # ── 0. Ajuste No Rutinario (ANR) ─────────────────────────────────────────
     from core.ajuste_no_rutinario import aplicar_ajuste_no_rutinario, resumen_anr
     df_hist_anr, log_anr, hay_anr = aplicar_ajuste_no_rutinario(
-        df_historico, col_consumo
+        df_base, col_consumo
     )
     resumen_anr_dict = resumen_anr(log_anr) if hay_anr else {}
 
@@ -74,7 +74,7 @@ def calcular(
 
     # Consumo original sin ANR (para gráfico de auditoría)
     consumo_hist_original = (
-        df_historico[col_consumo].astype(float).tolist()
+        df_base[col_consumo].astype(float).tolist()
         if hay_anr else []
     )
 
@@ -110,7 +110,7 @@ def calcular(
     # Para los otros modelos usamos la primera variable independiente.
     if modelo_id == "regresion" and modelo.params.get("var_principal"):
         var_principal = modelo.params["var_principal"]
-        df_para_disp  = df_hist_anr   # siempre del histórico para el gráfico
+        df_para_disp  = df_hist_anr   # siempre del base para el gráfico
         x_disp  = df_hist_anr[var_principal].tolist() if var_principal in df_hist_anr.columns else []
         x_label = var_principal
     else:
@@ -141,7 +141,7 @@ def calcular(
 
     # ── 8. modelo_params: parámetros completos para la UI ────────────────────
     # Para regresión, modelo.params ya incluye x_hist (primera var independiente
-    # del histórico). Para los otros modelos lo extraemos aquí.
+    # del base). Para los otros modelos lo extraemos aquí.
     params_extra = {}
     if modelo_id != "regresion":
         params_extra["x_hist"] = _x_dispersion(df_hist_anr, vars_independientes)[0]
@@ -154,7 +154,7 @@ def calcular(
     }
 
     return {
-        # Período histórico
+        # Período base
         "fechas_hist":     fechas_hist,
         "consumo_hist":    consumo_hist,
         "lb_hist":         lb_hist,
@@ -226,7 +226,7 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, fr
     mid = type(modelo).__name__
 
     if mid == "ModeloPromedio":
-        # LBEn del mes correspondiente del histórico
+        # LBEn del mes correspondiente del base
         from core.models.promedio import _extraer_numero_mes
         lben_mensual = modelo.params.get("lben_mensual", {})
         media_global = modelo.params.get("media",
@@ -275,7 +275,7 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, fr
                     pred = intercepto + sum(p * x for p, x in zip(pendientes, row))
                 lb.append(pred)
 
-    # IC usando el SEM del histórico
+    # IC usando el SEM del base
     sem    = modelo.params.get("sem", 0)
     n      = len(consumo) if consumo else 30
     k      = modelo.params.get("k", 1)

@@ -82,7 +82,7 @@ class ModeloPromedio(ModeloBase):
                          Los 12 valores de LBEn, uno por mes del año.
         ic_mensual     : dict  {1: (inf, sup), ..., 12: (inf, sup)}
         datos_por_mes  : dict  {1: [v1, v2, v3], ..., 12: [...]}
-                         Los datos históricos agrupados por mes (antes de depurar).
+                         Los datos bases agrupados por mes (antes de depurar).
         datos_depurados: dict  {1: [v1, v2], ..., 12: [...]}
                          Los datos que quedaron DENTRO del IC (usados para la LBEn).
         outliers       : dict  {1: [v_eliminado], ..., 12: [...]}
@@ -131,7 +131,7 @@ class ModeloPromedio(ModeloBase):
             if len(valores) == 0:
                 # No hay datos para este mes
                 advertencias.append(
-                    f"{_NOMBRES_MES[mes]}: sin datos históricos."
+                    f"{_NOMBRES_MES[mes]}: sin datos bases."
                 )
                 lben_mensual[mes]    = None
                 ic_mensual[mes]      = (None, None)
@@ -192,7 +192,7 @@ class ModeloPromedio(ModeloBase):
                 lben_mensual[mes] = round(float(np.mean(dentro)), 4)
 
         # ── PASO 3: Construir los vectores de salida (un valor por período) ───
-        # Para cada período histórico asignamos la LBEn del mes que le corresponde.
+        # Para cada período base asignamos la LBEn del mes que le corresponde.
         linea_base = []
         ic_sup_vec = []
         ic_inf_vec = []

@@ -3,7 +3,7 @@ core/ajuste_no_rutinario.py
 ============================
 Ajuste No Rutinario (ANR) — Resolución UPME 16/2024
 
-Columna esperada en el DataFrame de Histórico
+Columna esperada en el DataFrame de Base
 ---------------------------------------------
   Nombre aceptado (insensible a mayúsculas/tildes, con o sin guiones/espacios):
     "Ajuste_NR", "AjusteNR", "ajuste nr", "ANR", "Anomalia", "Anomalo",
@@ -88,7 +88,7 @@ def aplicar_ajuste_no_rutinario(
     """
     Parámetros
     ----------
-    df           : DataFrame leído del Excel (Histórico)
+    df           : DataFrame leído del Excel (Base)
     col_consumo  : nombre de la columna de consumo energético
 
     Retorna

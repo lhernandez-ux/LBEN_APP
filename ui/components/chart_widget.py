@@ -340,7 +340,7 @@ class ChartWidget(ctk.CTkFrame):
         fig    = go.Figure()
         layout = get_chart_layout()
         layout["title"] = {
-            "text": f"Período histórico — {titulo_proyecto}" if titulo_proyecto else "Período histórico",
+            "text": f"Período base — {titulo_proyecto}" if titulo_proyecto else "Período base",
             "font": {"size": 15, "color": COLORS.text_primary},
             "x": 0.5, "xanchor": "center",
         }
@@ -372,7 +372,7 @@ class ChartWidget(ctk.CTkFrame):
         if consumo_h:
             fig.add_trace(go.Scatter(
                 x=fechas_h, y=consumo_h, mode="lines+markers",
-                name="Consumo histórico",
+                name="Consumo base",
                 line=dict(color="#2E86C1", width=1.8),
                 marker=dict(color="#2E86C1", size=7),
             ))
@@ -795,7 +795,7 @@ class ChartWidget(ctk.CTkFrame):
 
     def plot_correlacion_variable(self, resultado: dict):
         """
-        Scatter X = variable independiente principal, Y = consumo real del histórico.
+        Scatter X = variable independiente principal, Y = consumo real del base.
 
         Puntos clasificados:
           - Verde  (▼ mejor desempeño): consumo_real < LBEn → usados para línea meta

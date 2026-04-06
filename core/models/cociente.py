@@ -80,7 +80,7 @@ class ModeloCociente(ModeloBase):
             valores = cocientes_por_mes[mes]
 
             if len(valores) == 0:
-                advertencias.append(f"{_NOMBRES_MES[mes]}: sin datos históricos.")
+                advertencias.append(f"{_NOMBRES_MES[mes]}: sin datos bases.")
                 lben_mensual[mes] = None
                 ic_mensual[mes]   = (None, None)
                 coc_depurados[mes] = []
@@ -163,7 +163,7 @@ class ModeloCociente(ModeloBase):
             ic_sup_vec.append(ic_sup_periodo)
             ic_inf_vec.append(ic_inf_periodo)
 
-        # SEM para IC en reporte (basado en dispersión de cocientes históricos)
+        # SEM para IC en reporte (basado en dispersión de cocientes bases)
         todos_cocientes = []
         for m in range(1, 13):
             todos_cocientes.extend(coc_depurados[m])

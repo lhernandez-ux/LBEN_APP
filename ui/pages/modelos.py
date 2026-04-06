@@ -16,7 +16,7 @@ MODELOS = [
         "nivel_color": "#1E8449",
         "nivel_bg": "#D5F5E3",      # fondo claro del badge
         "descripcion": (
-            "Estima la línea base como el promedio del consumo histórico.\n"
+            "Estima la línea base como el promedio del consumo base.\n"
             "Ideal cuando el consumo es relativamente constante y no\n"
             "depende de variables externas."
         ),

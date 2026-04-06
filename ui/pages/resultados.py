@@ -2,7 +2,7 @@
 ui/pages/resultados.py
 ======================
 3 pestañas:
-  📈 Línea base  → histórico: puntos (verde=dentro IC, rojo=outlier) + LBEn + banda IC
+  📈 Línea base  → base: puntos (verde=dentro IC, rojo=outlier) + LBEn + banda IC
   📊 Desempeño   → barras desviación arriba + tabla completa abajo
   📡 Seguimiento → reporte vs LBEn (gráfico de línea) + CUSUM abajo
 """
@@ -114,7 +114,7 @@ class ResultadosPage(ctk.CTkFrame):
     # TAB 1 — Línea base
     # Scroll vertical:
     #   └─ advertencias (si hay)
-    #   └─ gráfico histórico (puntos coloreados + LBEn + banda IC)
+    #   └─ gráfico base (puntos coloreados + LBEn + banda IC)
     #   └─ [Gráfico 1] scatter consumos por año + LBEn ±10% (Modelos 1 y 2)
     #   └─ [Gráfico 2] correlación consumo vs variable (Modelos 2 y 3)
     #   └─ tabla 12 LBEn mensuales
@@ -631,7 +631,7 @@ class ResultadosPage(ctk.CTkFrame):
                              "No se encontró la columna 'Ajuste_NR' en los datos, "
                              "o no se marcaron meses anómalos.\n"
                              "Para activar el ANR, agrega la columna 'Ajuste_NR' en "
-                             "la hoja Histórico del Excel\n"
+                             "la hoja Base del Excel\n"
                              "y escribe el motivo en los meses que quieras corregir "
                              "(ej: 'mantenimiento', 'falla eléctrica')."
                          ),

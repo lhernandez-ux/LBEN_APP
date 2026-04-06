@@ -1,7 +1,7 @@
 """
 ui/pages/datos.py
 =================
-Carga el archivo Excel y lee las dos hojas: 'Histórico' y 'Reporte'.
+Carga el archivo Excel y lee las dos hojas: 'Base' y 'Reporte'.
 Si el archivo no tiene hoja 'Reporte' (usuario sin datos nuevos) también funciona.
 """
 
@@ -64,7 +64,7 @@ class DatosPage(ctk.CTkFrame):
                      font=(FONTS.family, FONTS.size_md),
                      text_color=COLORS.text_primary).pack()
         ctk.CTkLabel(upload_card,
-                     text="El archivo debe tener las hojas 'Histórico' (obligatoria) y 'Reporte' (opcional)",
+                     text="El archivo debe tener las hojas 'Base' (obligatoria) y 'Reporte' (opcional)",
                      font=(FONTS.family, FONTS.size_xs),
                      text_color=COLORS.text_secondary).pack(pady=(2, 12))
 
@@ -85,8 +85,8 @@ class DatosPage(ctk.CTkFrame):
         # Se muestra solo si hay ANR detectado
 
         # ── Previews de las dos hojas ──────────────────────────────────────────
-        # Histórico
-        self.prev_hist = self._make_preview(body, "Histórico — primeras 5 filas")
+        # Base
+        self.prev_hist = self._make_preview(body, "Base — primeras 5 filas")
         self.prev_hist.pack_forget()
 
         # Reporte
@@ -128,7 +128,7 @@ class DatosPage(ctk.CTkFrame):
         texto = (
             f"Modelo: {s.modelo_id.title() if s.modelo_id else '—'}   |   "
             f"Columna consumo: {s.col_consumo}   |   "
-            f"Período histórico: {s.periodo_historico or '—'}"
+            f"Período base: {s.periodo_base or '—'}"
         )
         if s.tiene_reporte and s.periodo_reporte:
             texto += f"\nPeríodo de reporte: {s.periodo_reporte}"
@@ -147,13 +147,13 @@ class DatosPage(ctk.CTkFrame):
         errores = []
 
         try:
-            # ── Hoja Histórico ────────────────────────────────────────────────
-            df_hist = leer_excel(path, hoja="Histórico")
+            # ── Hoja Base ────────────────────────────────────────────────
+            df_hist = leer_excel(path, hoja="Base")
             err_h = validar_dataframe(df_hist, s.col_consumo, s.vars_independientes)
             if err_h:
-                errores += [f"[Histórico] {e}" for e in err_h]
+                errores += [f"[Base] {e}" for e in err_h]
             else:
-                s.df_historico = df_hist
+                s.df_base = df_hist
                 self._mostrar_preview(self.prev_hist, df_hist)
 
             # ── Hoja Reporte (opcional) ───────────────────────────────────────
@@ -172,10 +172,10 @@ class DatosPage(ctk.CTkFrame):
 
             s.ruta_excel = path   # guarda la ruta para el gestor de proyectos
             nombre = path.split("\\")[-1].split("/")[-1]
-            n_hist = len(df_hist) if s.df_historico is not None else 0
+            n_hist = len(df_hist) if s.df_base is not None else 0
             n_rep  = len(s.df_reporte) if s.df_reporte is not None else 0
             self.lbl_archivo.configure(
-                text=f"✓  {nombre}   (Histórico: {n_hist} filas"
+                text=f"✓  {nombre}   (Base: {n_hist} filas"
                      + (f"  |  Reporte: {n_rep} filas" if n_rep else "  |  Sin reporte")
                      + ")",
                 text_color=COLORS.success,
@@ -224,7 +224,7 @@ class DatosPage(ctk.CTkFrame):
         self.error_lbl.configure(text="")
         try:
             resultado = calcular(
-                df_historico=s.df_historico,
+                df_base=s.df_base,
                 df_reporte=s.df_reporte,
                 modelo_id=s.modelo_id,
                 col_consumo=s.col_consumo,

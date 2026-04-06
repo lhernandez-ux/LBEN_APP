@@ -19,10 +19,29 @@ def _es_columna_anr(nombre: str) -> bool:
     """True si el nombre de columna corresponde a la columna de marcado ANR."""
     return bool(_PATRON_COL_ANR.search(nombre.strip()))
 
+def _detectar_separador(series: pd.Series) -> str:
+    """
+    Analiza una columna de strings y detecta si usa separador
+    decimal europeo (coma) o anglosajón (punto).
+    Retorna 'europeo' o 'anglosajón'.
+    """
+    for val in series.dropna():
+        s = str(val).strip()
+        # Si tiene coma Y punto, el último que aparece es el decimal
+        if "," in s and "." in s:
+            return "europeo" if s.rfind(",") > s.rfind(".") else "anglosajón"
+        # Si solo tiene coma → decimal europeo
+        if "," in s and "." not in s:
+            return "europeo"
+        # Si solo tiene punto → decimal anglosajón
+        if "." in s and "," not in s:
+            return "anglosajón"
+    return "anglosajón"  # default si no hay pistas
+
 
 def leer_excel(path: str, hoja: str = None) -> pd.DataFrame:
     """
-    hoja: nombre exacto de la hoja ('Histórico', 'Reporte').
+    hoja: nombre exacto de la hoja ('Base', 'Reporte').
           Si es None busca automáticamente la primera hoja de datos.
     """
     hoja_elegida = hoja if hoja else _elegir_hoja(path)
@@ -39,16 +58,17 @@ def leer_excel(path: str, hoja: str = None) -> pd.DataFrame:
     # EXCEPCIÓN: columnas ANR se dejan como texto — contienen motivos escritos por el usuario
     col_fecha = df.columns[0]
     for col in df.columns:
-        if col == col_fecha:
-            continue
-        if _es_columna_anr(col):
-            # Preservar como texto; reemplazar NaN por cadena vacía para facilitar comparación
-            df[col] = df[col].fillna("").astype(str).str.strip()
+        if col == col_fecha or _es_columna_anr(col):
             continue
         if df[col].dtype == object:
-            limpio = (df[col].astype(str).str.strip()
+            sep = _detectar_separador(df[col])
+            if sep == "europeo":
+                limpio = (df[col].astype(str).str.strip()
                       .str.replace(r"\.", "", regex=True)
                       .str.replace(",", ".", regex=False))
+            else:
+                limpio = (df[col].astype(str).str.strip()
+                        .str.replace(",", "", regex=False))  # solo quita separador de miles
             df[col] = pd.to_numeric(limpio, errors="coerce")
 
     return df

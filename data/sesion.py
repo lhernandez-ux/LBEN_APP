@@ -18,17 +18,17 @@ class Sesion:
     nivel_confianza:      int  = 95
     
     # Frecuencia de los datos (solo para regresión lineal)
-    frecuencia_datos:     str  = "mensual"  # "mensual", "diario", "horario"
+    frecuencia: str = "mensual"  # "mensual", "diario", "horario"
 
-    # Período histórico (entrena el modelo)
-    periodo_historico: str = ""
+    # Período base (entrena el modelo)
+    periodo_base: str = ""
 
     # Período de reporte (se compara contra la línea base)
     periodo_reporte: str = ""
-    tiene_reporte:   bool = False   # False = solo histórico, sin reporte
+    tiene_reporte:   bool = False   # False = solo base, sin reporte
 
     # DataFrames separados
-    df_historico: Optional[pd.DataFrame] = None
+    df_base: Optional[pd.DataFrame] = None
     df_reporte:   Optional[pd.DataFrame] = None
 
     # Ruta del Excel base (para guardar/abrir proyectos)

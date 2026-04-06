@@ -79,7 +79,7 @@ class IntroPage(ctk.CTkFrame):
             text=(
                 "Esta herramienta te permite establecer la línea base de\n"
                 "consumo energético usando modelos estadísticos validados.\n\n"
-                "Podrás descargar plantillas, cargar tus datos históricos\n"
+                "Podrás descargar plantillas, cargar tus datos bases\n"
                 "y obtener gráficos de desempeño y análisis CUSUM."
             ),
             font=(FONTS.family, FONTS.size_md),
