@@ -1034,10 +1034,6 @@ class ChartWidget(ctk.CTkFrame):
             font=dict(size=11, color=COLORS.text_primary, family=FONTS.family),
         )
 
-        # ── Cuadro 2: Línea meta + ahorro ────────────────────────────────────
-
-                
-
         fig.update_layout(**layout)
         self._render(fig)
 
