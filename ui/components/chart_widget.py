@@ -49,7 +49,7 @@ class ChartWidget(ctk.CTkFrame):
 
     # ── Render ────────────────────────────────────────────────────────────────
 
-    def _render(self, fig: go.Figure, width: int = 1150):
+    def _render(self, fig: go.Figure, width: int = 1000):
         self._fig = fig
         try:
             raw = fig.to_image(format="png", width=width,
@@ -398,12 +398,12 @@ class ChartWidget(ctk.CTkFrame):
             "font": {"size": 15, "color": COLORS.text_primary},
             "x": 0.5, "xanchor": "center",
         }
-        layout["xaxis"]["title"] = {"text": "Período de reporte"}
+        layout["xaxis"]["title"] = {"text": "Período de reporte", "standoff": 15}
         layout["yaxis"]["title"] = {"text": f"Consumo ({unidad})" if unidad else "Consumo"}
-        layout["margin"]         = {"l": 70, "r": 20, "t": 70, "b": 100}
+        layout["margin"]         = {"l": 70, "r": 20, "t": 70, "b": 120}
         layout["plot_bgcolor"]   = "#FAFAFA"
         layout["legend"]         = {
-            "orientation": "h", "yanchor": "top", "y": -0.22,
+            "orientation": "h", "yanchor": "top", "y": -0.58,
             "xanchor": "center", "x": 0.5,
             "bgcolor": "rgba(255,255,255,0.9)",
             "bordercolor": "#E0E0E0", "borderwidth": 1,
@@ -570,11 +570,11 @@ class ChartWidget(ctk.CTkFrame):
         fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines+markers",
                                   line=dict(color=COLOR_BAJA, width=3),
                                   marker=dict(color=COLOR_BAJA, size=10),
-                                  name="Mejora / Ahorro (CUSUM baja)"))
+                                  name="Mejora / Ahorro"))
         fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines+markers",
                                   line=dict(color=COLOR_SUBE, width=3),
                                   marker=dict(color=COLOR_SUBE, size=10),
-                                  name="Incremento (CUSUM sube)"))
+                                  name="Incremento "))
 
         fig.update_layout(**layout)
         self._render(fig)

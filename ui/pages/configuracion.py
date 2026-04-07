@@ -27,6 +27,21 @@ FRECUENCIAS = [
     {"id": "horario", "nombre": "Horario", "dias": 1/24},
 ]
 
+# Opciones de zona climática
+ZONAS_CLIMATICAS = [
+    "Cálido",
+    "Templado",
+    "Frío",
+]
+
+# Opciones de unidad de energía
+UNIDADES_ENERGIA = [
+    "kWh",
+    "MWh",
+    "GJ",
+    "MMBTU",
+]
+
 
 class ConfiguracionPage(ctk.CTkFrame):
     def __init__(self, parent, app):
@@ -79,8 +94,66 @@ class ConfiguracionPage(ctk.CTkFrame):
         info_card = self._card(self.body)
 
         self.entry_proyecto = self._field(info_card, "Nombre del proyecto", "Planta Norte — 2024")
-        self.entry_zona     = self._field(info_card, "Zona climática (opcional)")
-        self.entry_unidad   = self._field(info_card, "Unidad de energía", "kWh")
+
+        # ── Zona climática — menú desplegable ─────────────────────────────────
+        ctk.CTkLabel(info_card, text="Zona climática (opcional)",
+                     font=(FONTS.family, FONTS.size_sm, "bold"),
+                     text_color=COLORS.text_primary).pack(anchor="w", padx=16, pady=(12, 2))
+
+        zona_row = ctk.CTkFrame(info_card, fg_color="transparent")
+        zona_row.pack(fill="x", padx=16, pady=(0, 4))
+
+        self.var_zona = ctk.StringVar(value="")
+        self.opt_zona = ctk.CTkOptionMenu(
+            zona_row,
+            variable=self.var_zona,
+            values=["(ninguna)"] + ZONAS_CLIMATICAS,
+            font=(FONTS.family, FONTS.size_sm),
+            fg_color=COLORS.bg_main,
+            text_color=COLORS.text_primary,
+            button_color=COLORS.primary,
+            button_hover_color=COLORS.primary_hover,
+            dropdown_fg_color=COLORS.bg_card,
+            dropdown_text_color=COLORS.text_primary,
+            dropdown_hover_color=COLORS.primary_light,
+            width=200,
+            height=36,
+        )
+        self.opt_zona.set("(ninguna)")
+        self.opt_zona.pack(side="left")
+
+        ctk.CTkFrame(info_card, fg_color="transparent", height=12).pack()
+
+        # ── Unidad de energía — menú desplegable ──────────────────────────────
+        ctk.CTkLabel(info_card, text="Unidad de energía",
+                     font=(FONTS.family, FONTS.size_sm, "bold"),
+                     text_color=COLORS.text_primary).pack(anchor="w", padx=16, pady=(0, 2))
+
+        unidad_row = ctk.CTkFrame(info_card, fg_color="transparent")
+        unidad_row.pack(fill="x", padx=16, pady=(0, 16))
+
+        self.var_unidad = ctk.StringVar(value="kWh")
+        self.opt_unidad = ctk.CTkOptionMenu(
+            unidad_row,
+            variable=self.var_unidad,
+            values=UNIDADES_ENERGIA,
+            font=(FONTS.family, FONTS.size_sm),
+            fg_color=COLORS.bg_main,
+            text_color=COLORS.text_primary,
+            button_color=COLORS.primary,
+            button_hover_color=COLORS.primary_hover,
+            dropdown_fg_color=COLORS.bg_card,
+            dropdown_text_color=COLORS.text_primary,
+            dropdown_hover_color=COLORS.primary_light,
+            width=160,
+            height=36,
+        )
+        self.opt_unidad.pack(side="left", padx=(0, 10))
+
+        ctk.CTkLabel(unidad_row,
+                     text="kWh = kilovatio-hora  ·  MWh = megavatio-hora  ·  GJ = gigajulio  ·  MMBTU = millón BTU",
+                     font=(FONTS.family, FONTS.size_xs),
+                     text_color=COLORS.text_secondary).pack(side="left")
 
         # ── Selector de frecuencia (SOLO para regresión lineal) ────────────────
         if m["id"] == "regresion":
@@ -229,7 +302,6 @@ class ConfiguracionPage(ctk.CTkFrame):
                      "   ¡Atención! Un año completo genera 8,760 filas."
             )
         
-        # Refrescar el preview de fechas
         self._refresh_previews()
 
     def _refresh_previews(self):
@@ -302,7 +374,7 @@ class ConfiguracionPage(ctk.CTkFrame):
             return "hora"
         return "período"
 
-    # ── Picker reutilizable (modificado para soportar frecuencias) ───────────────────
+    # ── Picker reutilizable ────────────────────────────────────────────────────
 
     def _build_picker(self, parent, prefijo, default_ini_año, default_fin_año, min_meses=12):
         """Construye una fila Desde/Hasta con su resumen."""
@@ -347,7 +419,7 @@ class ConfiguracionPage(ctk.CTkFrame):
         else:
             self.rep_picker_frame.pack_forget()
 
-    # ── Helpers modificados para soportar frecuencias ─────────────────────────────────
+    # ── Helpers de fechas ─────────────────────────────────────────────────────
 
     @staticmethod
     def _fecha(mes_nombre, año):
@@ -377,7 +449,6 @@ class ConfiguracionPage(ctk.CTkFrame):
                 fechas.append(current)
                 current += delta
         elif freq_id == "horario":
-            # Para horario, generamos datetime con hora
             from datetime import datetime, timedelta as td
             dt_ini = datetime(ini.year, ini.month, ini.day, 0, 0)
             dt_fin = datetime(fin.year, fin.month, fin.day, 23, 0)
@@ -422,7 +493,6 @@ class ConfiguracionPage(ctk.CTkFrame):
             return
         vars_ind = [e.get().strip() for e in self.var_entries if e.get().strip()]
         
-        # Obtener la frecuencia (solo para regresión)
         freq_id = "mensual"
         if self.modelo["id"] == "regresion" and hasattr(self, 'var_frecuencia'):
             freq_id = self.var_frecuencia.get()
@@ -438,12 +508,17 @@ class ConfiguracionPage(ctk.CTkFrame):
             fechas_base=fechas_hist,
             fechas_reporte=fechas_rep,
             nombre_proyecto=self.entry_proyecto.get(),
-            zona_climatica=self.entry_zona.get() or "",
-            unidad=self.entry_unidad.get() or "kWh",
-            frecuencia=freq_id,  # nuevo parámetro
+            zona_climatica=self._get_zona(),
+            unidad=self.var_unidad.get() or "kWh",
+            frecuencia=freq_id,
         )
         n = len(fechas_hist) + len(fechas_rep)
         self._toast(f"Plantilla lista — {n} períodos en total ✓")
+
+    def _get_zona(self) -> str:
+        """Devuelve la zona climática seleccionada, o cadena vacía si es '(ninguna)'."""
+        val = self.var_zona.get()
+        return "" if val == "(ninguna)" else val
 
     def _guardar_y_continuar(self):
         self._guardar_sesion()
@@ -452,25 +527,24 @@ class ConfiguracionPage(ctk.CTkFrame):
     def _guardar_sesion(self):
         s = self.app.sesion
         s.nombre_proyecto     = self.entry_proyecto.get()
-        s.zona_climatica     = self.entry_zona.get() if hasattr(self, "entry_zona") else ""
-        s.unidad_energia      = self.entry_unidad.get() or "kWh"
+        s.zona_climatica      = self._get_zona()
+        s.unidad_energia      = self.var_unidad.get() or "kWh"
         s.col_consumo         = self.entry_dep.get() if hasattr(self, "entry_dep") else "Consumo_kWh"
         s.vars_independientes = [e.get().strip() for e in self.var_entries if e.get().strip()]
-        s.nivel_confianza     = 95  # por defecto
+        s.nivel_confianza     = 95
         s.tiene_reporte       = self.var_tiene_reporte.get() if hasattr(self, "var_tiene_reporte") else False
         
         # Guardar frecuencia si es regresión
         if self.modelo and self.modelo["id"] == "regresion" and hasattr(self, 'var_frecuencia'):
             s.frecuencia = self.var_frecuencia.get()
         else:
-        # Para otros modelos, siempre es mensual
             s.frecuencia = "mensual"
         
-        s.periodo_base   = (f"{self.var_hist_ini_mes.get()} {self.var_hist_ini_año.get()} – "
-                                  f"{self.var_hist_fin_mes.get()} {self.var_hist_fin_año.get()}")
+        s.periodo_base = (f"{self.var_hist_ini_mes.get()} {self.var_hist_ini_año.get()} – "
+                          f"{self.var_hist_fin_mes.get()} {self.var_hist_fin_año.get()}")
         if s.tiene_reporte:
             s.periodo_reporte = (f"{self.var_rep_ini_mes.get()} {self.var_rep_ini_año.get()} – "
-                                  f"{self.var_rep_fin_mes.get()} {self.var_rep_fin_año.get()}")
+                                 f"{self.var_rep_fin_mes.get()} {self.var_rep_fin_año.get()}")
 
     def _toast(self, msg):
         t = ctk.CTkToplevel(self)
@@ -501,7 +575,7 @@ class ConfiguracionPage(ctk.CTkFrame):
                      text_color=COLORS.text_primary).pack(anchor="w", padx=16, pady=(12, 2))
         entry = ctk.CTkEntry(parent, placeholder_text=placeholder,
                               font=(FONTS.family, FONTS.size_sm), height=36)
-        entry.pack(fill="x", padx=16, pady=(0, 24))
+        entry.pack(fill="x", padx=16, pady=(0, 4))
         if hint:
             ctk.CTkLabel(parent, text=hint,
                          font=(FONTS.family, FONTS.size_xs),

@@ -28,8 +28,8 @@ class ResultadosPage(ctk.CTkFrame):
         # Si viene de monitoreo, volver ahí; si no, a DatosPage
         if getattr(self, "_desde", None) == "MonitoreoPage":
             self.app.show_page("MonitoreoPage")
-        else:
-            self.app.show_page("configuracionPage")
+        if getattr(self, "_desde", None) == "ResultadosPage":  # por si se recarga la página desde sí misma
+            self.app.show_page("ConfiguracionPage")
 
     def _ir_a_monitoreo(self):
         #Navega directamente a la página de monitoreo.
@@ -492,27 +492,34 @@ class ResultadosPage(ctk.CTkFrame):
         g2.plot_cusum(r)
 
     def _tabla_lben_simple(self, parent, r: dict):
-        """Tabla compacta: Encuentra automáticamente la columna LBEn y la muestra junto al Mes."""
-        filas_raw = r.get("tabla_lben_mensual", [])
-        cols_raw = r.get("cols_lben_mensual", [])
-        
-        if not filas_raw or not cols_raw:
-            ctk.CTkLabel(parent, text="Sin datos",
-                         font=(FONTS.family, FONTS.size_xs),
-                         text_color=COLORS.text_secondary).pack(pady=20)
+        """
+        Para modelos promedio/cociente: tabla compacta Mes | LBEn.
+        Para modelo regresión: ecuación ajustada + métricas globales clave.
+        """
+        modelo_id = r.get("modelo_id", "promedio")
+
+        # ── REGRESIÓN: mostrar ecuación + métricas ────────────────────────────
+        if modelo_id == "regresion":
+            self._panel_regresion_lateral(parent, r)
             return
 
-        # 1. Encontrar el índice de la columna que queremos (LBEn)
-        idx_lben = 1 # Valor por defecto
+        # ── PROMEDIO / COCIENTE: tabla original ───────────────────────────────
+        filas_raw = r.get("tabla_lben_mensual", [])
+        cols_raw  = r.get("cols_lben_mensual", [])
+
+        if not filas_raw or not cols_raw:
+            ctk.CTkLabel(parent, text="Sin datos",
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.text_secondary).pack(pady=20)
+            return
+
+        idx_lben = 1
         for i, nombre_col in enumerate(cols_raw):
-            # Buscamos "LBEn" pero ignoramos si dice "IC" (para no agarrar los intervalos)
             if "LBEn" in nombre_col and "IC" not in nombre_col:
                 idx_lben = i
                 break
 
-        # 2. Configurar encabezados visuales (siempre 2 columnas)
-        modelo_id = r.get("modelo_id", "promedio")
-        txt_valor = "LBEn" if "promedio" in modelo_id else "Índice"
+        txt_valor = "LBEn"
         display_cols = ["Mes", txt_valor]
 
         tbl = ctk.CTkFrame(parent, fg_color="transparent")
@@ -524,36 +531,180 @@ class ResultadosPage(ctk.CTkFrame):
             h.grid(row=0, column=c, sticky="ew", padx=1, pady=(0, 2))
             h.grid_propagate(False)
             ctk.CTkLabel(h, text=txt,
-                         font=(FONTS.family, FONTS.size_xs, "bold"),
-                         text_color="white"
-                         ).place(relx=0.5, rely=0.5, anchor="center")
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color="white"
+                        ).place(relx=0.5, rely=0.5, anchor="center")
 
-        # 3. Renderizar filas
         for ri, fila in enumerate(filas_raw):
             mes = fila[0]
-            # Usamos el índice encontrado dinámicamente
             val_display = fila[idx_lben] if len(fila) > idx_lben else "—"
-            
-            bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
+            bg  = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
             sin = str(val_display) in ("Sin datos", "—", "")
 
-            # Celda Mes
             cm = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=28)
-            cm.grid(row=ri+1, column=0, sticky="ew", padx=(1, 0), pady=1)
+            cm.grid(row=ri + 1, column=0, sticky="ew", padx=(1, 0), pady=1)
             cm.grid_propagate(False)
             ctk.CTkLabel(cm, text=str(mes),
-                         font=(FONTS.family, FONTS.size_xs, "bold"),
-                         text_color=COLORS.text_primary
-                         ).place(relx=0.08, rely=0.5, anchor="w")
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color=COLORS.text_primary
+                        ).place(relx=0.08, rely=0.5, anchor="w")
 
-            # Celda Valor (Ajustado al índice amarillo de tu imagen)
             cl = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=28)
-            cl.grid(row=ri+1, column=1, sticky="ew", padx=(0, 1), pady=1)
+            cl.grid(row=ri + 1, column=1, sticky="ew", padx=(0, 1), pady=1)
             cl.grid_propagate(False)
             ctk.CTkLabel(cl, text=str(val_display),
-                         font=(FONTS.family, FONTS.size_xs),
-                         text_color=COLORS.accent if not sin else COLORS.text_secondary
-                         ).place(relx=0.92, rely=0.5, anchor="e")
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.accent if not sin else COLORS.text_secondary
+                     ).place(relx=0.92, rely=0.5, anchor="e")
+
+
+    def _panel_regresion_lateral(self, parent, r: dict):
+        """
+        Panel lateral para modelo de regresión en la vista de monitoreo.
+        Muestra: ecuación ajustada + métricas globales clave (R², CV(RMSE), F, p).
+        """
+        params = r.get("modelo_params", {})
+        coefs  = params.get("coeficientes", {})
+
+        if not coefs:
+            ctk.CTkLabel(parent, text="Sin datos del modelo",
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.text_secondary).pack(pady=20)
+            return
+
+        vars_ind = [c for c in coefs if c != "Intercepto"]
+
+        # ── Ecuación ──────────────────────────────────────────────────────────
+        ctk.CTkLabel(parent, text="Ecuación del modelo",
+                    font=(FONTS.family, FONTS.size_xs, "bold"),
+                    text_color=COLORS.primary, anchor="w"
+                    ).pack(anchor="w", padx=8, pady=(8, 2))
+
+        ec_partes = [f"{coefs.get('Intercepto', 0):,.2f}"]
+        for var in vars_ind:
+            c = coefs[var]
+            signo = "+" if c >= 0 else "−"
+            ec_partes.append(f"{signo} {abs(c):,.4f}·{var}")
+        ec_txt = "LBEn = " + "\n       ".join(ec_partes)
+
+        ec_frame = ctk.CTkFrame(parent, fg_color=COLORS.primary_light,
+                                corner_radius=6, border_width=1,
+                                border_color=COLORS.border)
+        ec_frame.pack(fill="x", padx=8, pady=(0, 10))
+        ctk.CTkLabel(ec_frame, text=ec_txt,
+                    font=(FONTS.family_mono, FONTS.size_xs),
+                    text_color=COLORS.primary,
+                    justify="left", wraplength=220, anchor="w"
+                    ).pack(anchor="w", padx=10, pady=8)
+
+        # ── Métricas globales ─────────────────────────────────────────────────
+        ctk.CTkLabel(parent, text="Métricas del modelo",
+                    font=(FONTS.family, FONTS.size_xs, "bold"),
+                    text_color=COLORS.primary, anchor="w"
+                    ).pack(anchor="w", padx=8, pady=(0, 4))
+
+        r2      = params.get("r2", 0)
+        r2_adj  = params.get("r2_ajustado", 0)
+        cv_rmse = params.get("cv_rmse", 0)
+        f_stat  = params.get("f_estadistico", 0)
+        p_f     = params.get("p_valor_f", 1)
+        n       = params.get("n", 0)
+
+        def _color_r2(v):
+            if v >= 0.90: return COLORS.improvement
+            if v >= 0.75: return COLORS.warning
+            return COLORS.degradation
+
+        def _color_cv(v):
+            if v <= 10:  return COLORS.improvement
+            if v <= 20:  return COLORS.warning
+            return COLORS.degradation
+
+        metricas = [
+            ("R²",           f"{r2:.4f}",       _color_r2(r2)),
+            ("R² ajustado",  f"{r2_adj:.4f}",   _color_r2(r2_adj)),
+            ("CV(RMSE)",     f"{cv_rmse:.2f}%",  _color_cv(cv_rmse)),
+            ("F-estadístico",f"{f_stat:.1f}",    COLORS.improvement if p_f < 0.05 else COLORS.degradation),
+            ("p-valor F",    f"{p_f:.4f}",       COLORS.improvement if p_f < 0.05 else COLORS.degradation),
+            ("N períodos",   f"{n}",             COLORS.text_primary),
+        ]
+
+        met_frame = ctk.CTkFrame(parent, fg_color=COLORS.bg_main,
+                                corner_radius=6, border_width=1,
+                                border_color=COLORS.border)
+        met_frame.pack(fill="x", padx=8, pady=(0, 10))
+        met_frame.grid_columnconfigure(1, weight=1)
+
+        for i, (lbl, val, color) in enumerate(metricas):
+            bg_fila = COLORS.bg_main if i % 2 == 0 else COLORS.bg_card
+            fila = ctk.CTkFrame(met_frame, fg_color=bg_fila, corner_radius=0, height=26)
+            fila.pack(fill="x", padx=2, pady=1)
+            fila.grid_columnconfigure(1, weight=1)
+            fila.grid_propagate(False)
+            ctk.CTkLabel(fila, text=lbl,
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.text_secondary, anchor="w"
+                        ).place(relx=0.04, rely=0.5, anchor="w")
+            ctk.CTkLabel(fila, text=val,
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color=color, anchor="e"
+                        ).place(relx=0.96, rely=0.5, anchor="e")
+
+        # ── Variables del modelo ──────────────────────────────────────────────
+        if vars_ind:
+            ctk.CTkLabel(parent, text="Variables independientes",
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color=COLORS.primary, anchor="w"
+                        ).pack(anchor="w", padx=8, pady=(0, 4))
+
+            p_vals    = params.get("p_valores", {})
+            pearson_r = params.get("pearson_r", {})
+            var_princ = params.get("var_principal", "")
+
+            var_frame = ctk.CTkFrame(parent, fg_color=COLORS.bg_main,
+                                    corner_radius=6, border_width=1,
+                                    border_color=COLORS.border)
+            var_frame.pack(fill="x", padx=8, pady=(0, 10))
+
+            for i, var in enumerate(vars_ind):
+                bg_fila = COLORS.bg_main if i % 2 == 0 else COLORS.bg_card
+                pv  = p_vals.get(var, 1.0)
+                rv  = pearson_r.get(var)
+                sig = "***" if pv < 0.001 else "**" if pv < 0.01 else "*" if pv < 0.05 else "✗"
+                p_color = COLORS.improvement if pv < 0.05 else COLORS.degradation
+                nombre_display = f"★ {var}" if var == var_princ else var
+
+                fila = ctk.CTkFrame(var_frame, fg_color=bg_fila, corner_radius=0)
+                fila.pack(fill="x", padx=2, pady=1)
+
+                ctk.CTkLabel(fila, text=nombre_display,
+                            font=(FONTS.family, FONTS.size_xs, "bold"),
+                            text_color=COLORS.text_primary, anchor="w",
+                            wraplength=150, justify="left"
+                            ).pack(anchor="w", padx=8, pady=(3, 0))
+
+                sub = ctk.CTkFrame(fila, fg_color="transparent")
+                sub.pack(fill="x", padx=8, pady=(0, 3))
+
+                coef_txt = f"β={coefs[var]:,.3f}"
+                ctk.CTkLabel(sub, text=coef_txt,
+                            font=(FONTS.family_mono, FONTS.size_xs),
+                            text_color=COLORS.text_primary, anchor="w"
+                            ).pack(side="left")
+
+                ctk.CTkLabel(sub, text=f"p{sig}",
+                            font=(FONTS.family, FONTS.size_xs, "bold"),
+                            text_color=p_color, anchor="w"
+                            ).pack(side="left", padx=(6, 0))
+
+                if rv is not None:
+                    r_color = (COLORS.improvement if abs(rv) >= 0.75
+                            else COLORS.warning if abs(rv) >= 0.50
+                            else COLORS.degradation)
+                    ctk.CTkLabel(sub, text=f"r={rv:+.2f}",
+                                font=(FONTS.family, FONTS.size_xs),
+                                text_color=r_color, anchor="e"
+                                ).pack(side="right")
 
     def _kpis_resumen(self, parent, r: dict):
         """Tarjetas KPI: meses con ahorro, excesos, desviación promedio."""
