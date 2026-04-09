@@ -127,8 +127,6 @@ class ModeloRegresion(ModeloBase):
         #ESA PARTE DICE ¿Qué tan bueno, confiable y usable es el modelo?
         r2          = float(ols.rsquared)   #Mide qué tanto el modelo explica el consumo
         r2_ajustado = float(ols.rsquared_adj) #Penaliza si metes variables innecesarias
-        aic         = float(ols.aic)  #no creo sea tan necesario:   Son métricas para comparar modelos
-        bic         = float(ols.bic)  #Se usan cuando tienes varios modelos y quieres elegir el mejor
         f_stat      = float(ols.fvalue)   if ols.fvalue   is not None else 0.0  #Si todo el modelo sirve
         p_valor_f   = float(ols.f_pvalue) if ols.f_pvalue is not None else 1.0  
 
@@ -403,10 +401,6 @@ class ModeloRegresion(ModeloBase):
 
             # ── Multicolinealidad ────────────────────────────────────────────
             "vif":                   vif,
-
-            # ── Criterios de información ─────────────────────────────────────
-            "aic":                   round(aic, 2),
-            "bic":                   round(bic, 2),
 
             # ── Verificación del modelo (Anexo 3) ────────────────────────────
             "error_promedio_pct":    round(error_promedio, 2),

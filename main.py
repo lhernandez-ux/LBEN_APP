@@ -1,21 +1,19 @@
-"""
-Herramienta de Línea Base Energética
-Punto de entrada principal de la aplicación.
-"""
-
 import sys
 import os
 
-# Asegura que el directorio raíz esté en el path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from ui.app import App
+# Redirigir errores a un archivo log en el escritorio
+log_path = os.path.join(os.path.expanduser("~"), "Desktop", "lben_error.txt")
+sys.stderr = open(log_path, "w", encoding="utf-8")
+sys.stdout = open(log_path, "a", encoding="utf-8")
 
-
-def main():
+try:
+    from ui.app import App
     app = App()
     app.mainloop()
-
-
-if __name__ == "__main__":
-    main()
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+finally:
+    sys.stderr.close()

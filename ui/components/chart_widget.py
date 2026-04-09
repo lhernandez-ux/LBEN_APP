@@ -917,7 +917,7 @@ class ChartWidget(ctk.CTkFrame):
         layout["xaxis"]["title"]     = {"text": x_label}
         layout["xaxis"]["tickangle"] = 0
         layout["yaxis"]["title"]     = {"text": f"Consumo ({unidad})" if unidad else "Consumo"}
-        layout["margin"] = {"l": 75, "r": 120, "t": 75, "b": 100}
+        layout["margin"] = {"l": 75, "r": 220, "t": 75, "b": 100}
         layout["plot_bgcolor"]       = "#FAFAFA"
         layout["hovermode"]          = "closest"
         layout["legend"]             = {
@@ -999,8 +999,19 @@ class ChartWidget(ctk.CTkFrame):
 
         # ── Línea meta (verde punteada) ───────────────────────────────────────
         if ecuacion_meta:
-        #  Quitar (R²=...) que viene pegado a la ecuación
+            # Quitar (R²=...) que viene pegado a la ecuación
             ecuacion_meta_limpia = re.sub(r"\(R²\s*=\s*[\d\.]+\)", "", ecuacion_meta)
+            # Redondear todos los números a 4 decimales máximo
+            def _redondear_num(m):
+                txt = m.group(0)
+                try:
+                    val = float(txt)
+                    if val == int(val):
+                        return f"{int(val):,}"
+                    return f"{val:,.2f}"
+                except ValueError:
+                    return txt
+            ecuacion_meta_limpia = re.sub(r"-?\d+\.?\d*", _redondear_num, ecuacion_meta_limpia)
 
 
         fig.add_trace(
@@ -1021,6 +1032,8 @@ class ChartWidget(ctk.CTkFrame):
 
         # ── Cuadro de ecuaciones y potencial de ahorro ────────────────────────
         # ── Cuadro 1: LBEn ───────────────────────────────────────────────────
+        # ── Cuadro de ecuaciones y potencial de ahorro ────────────────────────
+        # ── Cuadro 1: LBEn ───────────────────────────────────────────────────
         fig.add_annotation(
             xref="paper", yref="paper",
             x=0.02, y=0.97,
@@ -1034,8 +1047,29 @@ class ChartWidget(ctk.CTkFrame):
             font=dict(size=11, color=COLORS.text_primary, family=FONTS.family),
         )
 
+        # ── Cuadro 2: Línea meta ──────────────────────────────────────────────
+        if y_meta_line is not None and ecuacion_meta:
+            r2_meta_txt = f"R² = {r2_meta:.3f}" if r2_meta is not None else ""
+            texto_meta = (
+                f"<b>Línea meta</b><br>"
+                f"{ecuacion_meta_limpia.strip()}<br>"
+                f"{r2_meta_txt}"
+            )
+            fig.add_annotation(
+                xref="paper", yref="paper",
+                x=1.02, y=0.97,
+                xanchor="left", yanchor="top",
+                text=texto_meta,
+                showarrow=False,
+                bgcolor="rgba(30,132,73,0.88)",
+                bordercolor="#186A3B",
+                borderwidth=1,
+                borderpad=8,
+                font=dict(size=11, color="white", family=FONTS.family),
+            )
+
         fig.update_layout(**layout)
-        self._render(fig)
+        self._render(fig, width=1150)
 
     # ── Gráfico LBEn vs meta ──────────────────────────────────────────────────
 

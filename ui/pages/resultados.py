@@ -917,8 +917,6 @@ class ResultadosPage(ctk.CTkFrame):
         p_vals    = params.get("p_valores", {})
         t_vals    = params.get("t_estadisticos", {})
         vif       = params.get("vif", {})
-        aic       = params.get("aic", 0)
-        bic       = params.get("bic", 0)
         n         = params.get("n", 0)
         k         = params.get("k", 0)
         unidad    = r.get("unidad", "")
@@ -1005,14 +1003,6 @@ class ResultadosPage(ctk.CTkFrame):
              f"{n}  (k={k})",
              COLORS.text_primary,
              "Mín. 3 obs. por variable"),
-            ("AIC",
-             f"{aic:.1f}",
-             COLORS.text_primary,
-             "Criterio de información"),
-            ("BIC",
-             f"{bic:.1f}",
-             COLORS.text_primary,
-             "Criterio de información"),
         ]
 
         for metrica, valor, color, nota in metricas:
