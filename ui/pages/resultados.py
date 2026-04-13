@@ -259,7 +259,7 @@ class ResultadosPage(ctk.CTkFrame):
                 cell.grid(row=ri + 1, column=ci, sticky="ew", padx=1, pady=1)
                 cell.grid_propagate(False)
                 color = COLORS.text_primary
-                if ci == 4 and not sin_datos:  color = COLORS.accent
+                if ci == 4 and not sin_datos:  color = COLORS.improvement
                 elif ci == 2 and tiene_out:    color = COLORS.error
                 ctk.CTkLabel(cell, text=str(valor),
                              font=(FONTS.family, FONTS.size_xs),
@@ -554,7 +554,7 @@ class ResultadosPage(ctk.CTkFrame):
             cl.grid_propagate(False)
             ctk.CTkLabel(cl, text=str(val_display),
                         font=(FONTS.family, FONTS.size_xs),
-                        text_color=COLORS.accent if not sin else COLORS.text_secondary
+                        text_color=COLORS.improvement if not sin else COLORS.text_secondary
                      ).place(relx=0.92, rely=0.5, anchor="e")
 
 
@@ -585,17 +585,20 @@ class ResultadosPage(ctk.CTkFrame):
             c = coefs[var]
             signo = "+" if c >= 0 else "−"
             ec_partes.append(f"{signo} {abs(c):,.4f}·{var}")
-        ec_txt = "LBEn = " + "\n       ".join(ec_partes)
+        ec_txt = "LBEn = " + ec_partes[0] + "".join(f"\n  {p}" for p in ec_partes[1:])
 
         ec_frame = ctk.CTkFrame(parent, fg_color=COLORS.primary_light,
                                 corner_radius=6, border_width=1,
                                 border_color=COLORS.border)
         ec_frame.pack(fill="x", padx=8, pady=(0, 10))
+
         ctk.CTkLabel(ec_frame, text=ec_txt,
                     font=(FONTS.family_mono, FONTS.size_xs),
                     text_color=COLORS.primary,
-                    justify="left", wraplength=220, anchor="w"
-                    ).pack(anchor="w", padx=10, pady=8)
+                    justify="left", anchor="w",
+                    wraplength=0
+                    ).pack(anchor="w", padx=10, pady=8, fill="x")
+
 
         # ── Métricas globales ─────────────────────────────────────────────────
         ctk.CTkLabel(parent, text="Métricas del modelo",

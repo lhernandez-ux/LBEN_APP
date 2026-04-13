@@ -516,8 +516,14 @@ class ChartWidget(ctk.CTkFrame):
         }
         layout["yaxis"]["title"] = {"text": f"CUSUM ({unidad})" if unidad else "CUSUM acumulado"}
         layout["xaxis"]["title"] = {"text": "Período"}
-        layout["margin"]         = {"l": 80, "r": 30, "t": 70, "b": 60}
+        layout["margin"]         = {"l": 80, "r": 30, "t": 70, "b": 120}
         layout["plot_bgcolor"]   = "#FAFAFA"
+        layout["legend"]         = {
+            "orientation": "h", "yanchor": "top", "y": -0.58,
+            "xanchor": "center", "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#E0E0E0", "borderwidth": 1,
+        }
 
         COLOR_BAJA  = "#27AE60"; COLOR_SUBE  = "#E74C3C"
         COLOR_BAJA_FILL = "rgba(39,174,96,0.10)"; COLOR_SUBE_FILL = "rgba(231,76,60,0.10)"

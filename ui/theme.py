@@ -2,43 +2,42 @@
 ui/theme.py
 ===========
 Centro de control visual de la aplicación.
-Cambia colores, fuentes y tamaños AQUÍ sin tocar ninguna otra pantalla.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict
+from dataclasses import dataclass
 
 
 @dataclass
 class ColorScheme:
-    # Primarios
-    primary: str = "#1B4F72"          # Azul oscuro institucional
-    primary_hover: str = "#2E86C1"
-    primary_light: str = "#D6EAF8"
+    # Primarios — verde oscuro institucional
+    primary: str = "#1A3C34"
+    primary_dark: str = "#0F2420"
+    primary_hover: str = "#255C4F"
+    primary_light: str = "#D5F0EB"
 
-    # Acento verde energía
-    accent: str = "#1E8449"
-    accent_hover: str = "#27AE60"
-    accent_light: str = "#D5F5E3"
+    # Acento — amarillo-verde energético
+    accent: str = "#C8E500"
+    accent_hover: str = "#D4E800"
 
-    # Mejora / ahorro (CUSUM verde)
+    # Mejora / ahorro
     improvement: str = "#27AE60"
     degradation: str = "#C0392B"
     neutral: str = "#7F8C8D"
 
     # Fondos
-    bg_main: str = "#F0F3F4"
+    bg_main: str = "#EAEAEA"
     bg_card: str = "#FFFFFF"
-    bg_sidebar: str = "#1B2631"
-    bg_sidebar_hover: str = "#2C3E50"
+    bg_sidebar: str = "#1A3C34"
+    bg_sidebar_hover: str = "#255C4F"
 
     # Texto
-    text_primary: str = "#1C2833"
+    text_primary: str = "#1A1A1A"
     text_secondary: str = "#566573"
+    text_white: str = "#FDFEFE"
     text_on_dark: str = "#FDFEFE"
     text_on_dark_muted: str = "#AAB7B8"
 
-    # Bordes / separadores
+    # Bordes
     border: str = "#D5D8DC"
     border_light: str = "#EBF5FB"
 
@@ -58,12 +57,10 @@ class ColorScheme:
 
 @dataclass
 class Typography:
-    # Fuente principal — cámbiala aquí para toda la app
-    family: str = "Segoe UI"          # Windows / mac: cambia a "SF Pro Display" o "Helvetica Neue"
-    family_mono: str = "Consolas"
+    family      = "Inter"
+    family_mono = "Courier New"
 
-    # Tamaños
-    size_xs: int = 10
+    size_xs: int = 11
     size_sm: int = 12
     size_base: int = 13
     size_md: int = 15
@@ -71,16 +68,16 @@ class Typography:
     size_xl: int = 22
     size_2xl: int = 28
     size_3xl: int = 36
+    size_title: int = 28
 
-    # Pesos (CustomTkinter usa strings)
     weight_normal: str = "normal"
     weight_bold: str = "bold"
 
 
 @dataclass
-class Sizing:
-    sidebar_width: int = 220
-    header_height: int = 60
+class Dimensions:
+    sidebar_width: int = 190
+    topbar_height: int = 52
     card_radius: int = 12
     button_radius: int = 8
     padding_sm: int = 8
@@ -89,20 +86,19 @@ class Sizing:
     padding_xl: int = 32
 
 
-# ── Instancias globales (importa desde aquí) ──────────────────────────────────
+# ── Instancias globales ───────────────────────────────────────────────────────
 COLORS = ColorScheme()
 FONTS = Typography()
-SIZES = Sizing()
+DIMS = Dimensions()
+SIZES = DIMS
 
 
 def get_font(size_attr: str = "size_base", weight: str = "normal") -> tuple:
-    """Retorna una tupla (familia, tamaño, peso) compatible con tkinter."""
     size = getattr(FONTS, size_attr, FONTS.size_base)
     return (FONTS.family, size, weight)
 
 
 def get_chart_layout() -> dict:
-    """Retorna el layout base de Plotly con el estilo de la app."""
     return {
         "paper_bgcolor": "rgba(0,0,0,0)",
         "plot_bgcolor": COLORS.bg_card,

@@ -876,6 +876,7 @@ class MonitoreoPage(ctk.CTkFrame):
 
         ctk.CTkButton(btns, text="📂  Subir y actualizar proyecto",
                       font=(FONTS.family, FONTS.size_sm, "bold"),
+                      text_color=COLORS.primary_dark,
                       fg_color=COLORS.accent, hover_color=COLORS.accent_hover,
                       height=38, corner_radius=6,
                       command=lambda: self._subir_y_calcular(p, existe, ruta)

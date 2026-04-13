@@ -6,7 +6,7 @@ Nunca contiene lógica de negocio.
 """
 
 import customtkinter as ctk
-from ui.theme import COLORS, FONTS, SIZES
+from ui.theme import COLORS
 from ui.pages.intro import IntroPage
 from ui.pages.modelos import ModelosPage
 from ui.pages.configuracion import ConfiguracionPage
@@ -17,8 +17,8 @@ from data.sesion import Sesion
 
 
 # ── Configuración global de CustomTkinter ─────────────────────────────────────
-ctk.set_appearance_mode("light")
-ctk.set_default_color_theme("blue")
+#ctk.set_appearance_mode("light")
+#ctk.set_default_color_theme("blue")
 
 
 class App(ctk.CTk):
@@ -28,8 +28,8 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("Línea Base Energética")
-        self.geometry("1280x800")
-        self.minsize(1024, 680)
+        self.geometry("1100x700")
+        self.minsize(1000, 650)
         self.configure(fg_color=COLORS.bg_main)
 
         # Icono (opcional — coloca un archivo .ico en assets/)
