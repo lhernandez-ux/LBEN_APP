@@ -1,17 +1,19 @@
 """
 ui/pages/resultados.py
 ======================
-3 pestañas:
+4 pestañas:
   📈 Línea base  → base: puntos (verde=dentro IC, rojo=outlier) + LBEn + banda IC
   📊 Desempeño   → barras desviación arriba + tabla completa abajo
   📡 Seguimiento → reporte vs LBEn (gráfico de línea) + CUSUM abajo
+  🔧 Ajuste NR   → resumen y tabla de meses ajustados
+  ⚡ Potenciales → potencial de ahorro por mejor desempeño (UPME 016/2024 - 8.1)
 """
 
 import customtkinter as ctk
 from ui.theme import COLORS, FONTS, SIZES
 from ui.components.chart_widget import ChartWidget
 
-TABS = ["📈 Línea base", "📊 Desempeño", "📡 Seguimiento", "🔧 Ajuste NR"]
+TABS = ["📈 Línea base", "⚡ Potenciales", "📊 Desempeño", "📡 Seguimiento", "🔧 Ajuste NR"]
 
 
 class ResultadosPage(ctk.CTkFrame):
@@ -32,8 +34,9 @@ class ResultadosPage(ctk.CTkFrame):
             self.app.show_page("ConfiguracionPage")
 
     def _ir_a_monitoreo(self):
-        #Navega directamente a la página de monitoreo.
+        # Navega directamente a la página de monitoreo.
         self.app.show_page("MonitoreoPage")
+
     # ─────────────────────────────────────────────────────────────────────────
     def _build(self):
         self.grid_rowconfigure(1, weight=1)
@@ -106,18 +109,274 @@ class ResultadosPage(ctk.CTkFrame):
         self._tab_desempeno(r, s)
         self._tab_seguimiento(r, s)
         self._tab_ajuste_nr(r, s)
-        # Si viene de monitoreo, abrir directamente la pestaña de seguimiento
+        self._tab_potenciales(r, s)
+
         if getattr(self, "_desde", None) == "MonitoreoPage":
             self.tabs.set("📡 Seguimiento")
 
     # ══════════════════════════════════════════════════════════════════════════
+    # TAB 5 — Potenciales
+    # ══════════════════════════════════════════════════════════════════════════
+    def _tab_potenciales(self, r, s):
+        tab = self.tabs.tab("⚡ Potenciales")
+        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_columnconfigure(0, weight=1)
+
+        sv = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+        sv.grid(row=0, column=0, sticky="nsew")
+        sv.grid_columnconfigure(0, weight=1)
+
+        potencial = r.get("potencial", {})
+        filas     = potencial.get("tabla_potencial", [])
+        cols      = potencial.get("columnas_potencial", [])
+        metodo    = potencial.get("metodo", "—")
+
+        if not filas or not cols:
+            msg = ctk.CTkFrame(sv, fg_color=COLORS.bg_card,
+                            corner_radius=10, border_width=1,
+                            border_color=COLORS.border)
+            msg.pack(fill="x", padx=12, pady=40)
+            ctk.CTkLabel(msg,
+                        text="⚡  Sin cálculo de potencial disponible",
+                        font=(FONTS.family, FONTS.size_md, "bold"),
+                        text_color=COLORS.primary).pack(pady=(24, 6))
+            ctk.CTkLabel(msg,
+                        text="No fue posible calcular el potencial de ahorro por mejor desempeño.",
+                        font=(FONTS.family, FONTS.size_sm),
+                        text_color=COLORS.text_secondary,
+                        justify="center").pack(pady=(0, 24))
+            return
+
+        ahorro_kwh = potencial.get("ahorro_total_kwh", 0.0)
+        ahorro_pct = potencial.get("ahorro_total_pct", 0.0)
+        unidad     = s.unidad_energia
+
+        # ── Calcular total LBEn sumando columna índice 1 ──────────────────────────
+        # DESPUÉS (correcto) — promedio del consumo real × 12
+        consumo_real = r.get("consumo_real", [])
+        if consumo_real:
+            total_lben = (sum(consumo_real) / len(consumo_real)) * 12
+        else:
+            total_lben = 0.0
+
+        # ── KPI cards ─────────────────────────────────────────────────────────────
+        kpi_outer = ctk.CTkFrame(sv, fg_color="transparent")
+        kpi_outer.pack(fill="x", padx=12, pady=(14, 6))
+        kpi_outer.grid_columnconfigure((0, 1, 2), weight=1)
+
+        def _kpi_card(parent, col, icono, label, valor, sublabel, val_color):
+            card = ctk.CTkFrame(parent, fg_color=COLORS.bg_card,
+                                corner_radius=12, border_width=1,
+                                border_color=COLORS.border)
+            card.grid(row=0, column=col,
+                    padx=(0 if col == 0 else 6, 6 if col < 2 else 0),
+                    sticky="nsew")
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="both", padx=18, pady=14)
+
+            ic_frame = ctk.CTkFrame(inner, fg_color=COLORS.primary_light,
+                                    corner_radius=8, width=32, height=32)
+            ic_frame.pack(anchor="w")
+            ic_frame.grid_propagate(False)
+            ctk.CTkLabel(ic_frame, text=icono,
+                        font=(FONTS.family, 14),
+                        text_color=COLORS.primary
+                        ).place(relx=0.5, rely=0.5, anchor="center")
+
+            ctk.CTkFrame(inner, fg_color="transparent", height=6).pack()
+            ctk.CTkLabel(inner, text=label,
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.text_secondary,
+                        anchor="w").pack(anchor="w")
+            ctk.CTkLabel(inner, text=valor,
+                        font=(FONTS.family, FONTS.size_lg, "bold"),
+                        text_color=val_color,
+                        anchor="w", wraplength=220).pack(anchor="w")
+            ctk.CTkLabel(inner, text=sublabel,
+                        font=(FONTS.family, FONTS.size_xs),
+                        text_color=COLORS.text_secondary,
+                        anchor="w").pack(anchor="w")
+
+        _kpi_card(kpi_outer, 0, "≡", "Consumo Promedio Anual",
+                f"{total_lben:,.0f} {unidad}", f"Método: {metodo}",
+                COLORS.primary)
+        _kpi_card(kpi_outer, 1, "▲", "Ahorro Potencial Anual",
+                f"{ahorro_kwh:,.0f} {unidad}", "Suma de ahorros mensuales",
+                COLORS.improvement)
+        _kpi_card(kpi_outer, 2, "%", "Ahorro Potencial (%)",
+                f"{ahorro_pct:.2f}%", "Promedio mensual ponderado",
+                COLORS.warning)
+
+        # ── Tabla con fila de totales ──────────────────────────────────────────────
+        card = ctk.CTkFrame(sv, fg_color=COLORS.bg_card,
+                            corner_radius=10, border_width=1,
+                            border_color=COLORS.border)
+        card.pack(fill="x", padx=12, pady=(4, 20))
+
+        ctk.CTkLabel(card,
+                    text="📋  Potencial de ahorro mensual por mejor desempeño",
+                    font=(FONTS.family, FONTS.size_sm, "bold"),
+                    text_color=COLORS.primary
+                    ).pack(anchor="w", padx=16, pady=(14, 8))
+
+        tbl = ctk.CTkFrame(card, fg_color="transparent")
+        tbl.pack(padx=14, pady=(0, 14), fill="x")
+
+        n_cols = len(cols)
+        for c in range(n_cols):
+            tbl.grid_columnconfigure(c, weight=1)
+
+        # Encabezados
+        for c, col in enumerate(cols):
+            h = ctk.CTkFrame(tbl, fg_color=COLORS.primary, corner_radius=0, height=34)
+            h.grid(row=0, column=c, sticky="ew", padx=1, pady=(0, 2))
+            h.grid_propagate(False)
+            ctk.CTkLabel(h, text=col,
+                        font=(FONTS.family, FONTS.size_xs, "bold"),
+                        text_color="white"
+                        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        # Filas de datos
+        for ri, fila in enumerate(filas):
+            bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
+            for ci, valor in enumerate(fila):
+                cell = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=30)
+                cell.grid(row=ri + 1, column=ci, sticky="ew", padx=1, pady=1)
+                cell.grid_propagate(False)
+                color = COLORS.text_primary
+                if "%" in str(valor):
+                    try:
+                        v = float(str(valor).replace("%", "").replace(",", ".").strip())
+                        color = COLORS.improvement if v > 0 else COLORS.text_secondary
+                    except Exception:
+                        pass
+                ctk.CTkLabel(cell, text=str(valor),
+                            font=(FONTS.family, FONTS.size_xs),
+                            text_color=color
+                            ).place(relx=0.5, rely=0.5, anchor="center")
+
+        # ── Separador antes del total ──────────────────────────────────────────────
+        n_filas_datos = len(filas)
+        sep = ctk.CTkFrame(tbl, fg_color=COLORS.border, height=2)
+        sep.grid(row=n_filas_datos + 1, column=0, columnspan=n_cols,
+                sticky="ew", padx=1, pady=(2, 0))
+
+        # ── Detectar índices de columnas clave ────────────────────────────────────
+        idx_lben = next(
+            (i for i, c in enumerate(cols) if "LBEn" in c and "%" not in c),
+            1
+        )
+        idx_ahorro_kwh = next(
+            (i for i, c in enumerate(cols) if "Ahorro" in c and "%" not in c and "índice" not in c.lower()),
+            n_cols - 2
+        )
+        idx_ahorro_pct = next(
+            (i for i, c in enumerate(cols) if "%" in c),
+            n_cols - 1
+        )
+
+        # Sumar columnas numéricas intermedias (las que no son Mes ni %)
+        sumas = {}
+        for ci in range(1, n_cols):
+            if ci == idx_ahorro_pct:
+                continue
+            total = 0.0
+            valid = False
+            for fila in filas:
+                try:
+                    total += float(str(fila[ci]).replace(",", ""))
+                    valid = True
+                except Exception:
+                    pass
+            if valid:
+                sumas[ci] = total
+
+        # ── Fila de totales ────────────────────────────────────────────────────────
+        row_total = n_filas_datos + 2
+        for ci in range(n_cols):
+            cell = ctk.CTkFrame(tbl, fg_color=COLORS.primary_light,
+                                corner_radius=0, height=34)
+            cell.grid(row=row_total, column=ci, sticky="ew", padx=1, pady=1)
+            cell.grid_propagate(False)
+
+            if ci == 0:
+                texto = "TOTAL / PROMEDIO"
+                color = COLORS.text_secondary
+                bold  = "normal"
+            elif ci == idx_ahorro_kwh:
+                texto = f"{ahorro_kwh:,.0f} {unidad}"
+                color = COLORS.improvement
+                bold  = "bold"
+            elif ci == idx_ahorro_pct:
+                texto = f"{ahorro_pct:.0f}%"
+                color = COLORS.warning
+                bold  = "bold"
+            elif ci in sumas:
+                # columna numérica intermedia (LBEn, mínimos, índices, etc.)
+                texto = f"{sumas[ci]:,.0f}"
+                color = COLORS.text_secondary
+                bold  = "normal"
+            else:
+                texto = "—"
+                color = COLORS.text_secondary
+                bold  = "normal"
+
+            ctk.CTkLabel(cell, text=texto,
+                        font=(FONTS.family, FONTS.size_xs, bold),
+                        text_color=color
+                        ).place(relx=0.5, rely=0.5, anchor="center")
+
+    def _card_tabla_generica(self, parent, titulo: str, filas: list, columnas: list):
+        card = ctk.CTkFrame(parent, fg_color=COLORS.bg_card,
+                            corner_radius=10, border_width=1,
+                            border_color=COLORS.border)
+        card.pack(fill="x", padx=12, pady=(0, 20))
+
+        ctk.CTkLabel(card, text=titulo,
+                     font=(FONTS.family, FONTS.size_sm, "bold"),
+                     text_color=COLORS.primary
+                     ).pack(anchor="w", padx=16, pady=(14, 8))
+
+        tbl = ctk.CTkFrame(card, fg_color="transparent")
+        tbl.pack(padx=14, pady=(0, 14), fill="x")
+
+        for c in range(len(columnas)):
+            tbl.grid_columnconfigure(c, weight=1)
+
+        # Encabezados
+        for c, col in enumerate(columnas):
+            h = ctk.CTkFrame(tbl, fg_color=COLORS.primary, corner_radius=0, height=34)
+            h.grid(row=0, column=c, sticky="ew", padx=1, pady=(0, 2))
+            h.grid_propagate(False)
+            ctk.CTkLabel(h, text=col,
+                         font=(FONTS.family, FONTS.size_xs, "bold"),
+                         text_color="white"
+                         ).place(relx=0.5, rely=0.5, anchor="center")
+
+        # Filas
+        for ri, fila in enumerate(filas):
+            bg = COLORS.bg_card if ri % 2 == 0 else "#F4F6F8"
+            for ci, valor in enumerate(fila):
+                cell = ctk.CTkFrame(tbl, fg_color=bg, corner_radius=0, height=30)
+                cell.grid(row=ri + 1, column=ci, sticky="ew", padx=1, pady=1)
+                cell.grid_propagate(False)
+
+                color = COLORS.text_primary
+                # si es columna de porcentaje o ahorro, marcar verde
+                if "%" in str(valor):
+                    try:
+                        v = float(str(valor).replace("%", "").replace(",", ".").strip())
+                        color = COLORS.improvement if v > 0 else COLORS.text_secondary
+                    except:
+                        pass
+
+                ctk.CTkLabel(cell, text=str(valor),
+                             font=(FONTS.family, FONTS.size_xs),
+                             text_color=color
+                             ).place(relx=0.5, rely=0.5, anchor="center")
+
+    # ══════════════════════════════════════════════════════════════════════════
     # TAB 1 — Línea base
-    # Scroll vertical:
-    #   └─ advertencias (si hay)
-    #   └─ gráfico base (puntos coloreados + LBEn + banda IC)
-    #   └─ [Gráfico 1] scatter consumos por año + LBEn ±10% (Modelos 1 y 2)
-    #   └─ [Gráfico 2] correlación consumo vs variable (Modelos 2 y 3)
-    #   └─ tabla 12 LBEn mensuales
     # ══════════════════════════════════════════════════════════════════════════
     def _tab_linea_base(self, r, s):
         tab = self.tabs.tab("📈 Línea base")
@@ -128,14 +387,12 @@ class ResultadosPage(ctk.CTkFrame):
         sv.grid(row=0, column=0, sticky="nsew")
         sv.grid_columnconfigure(0, weight=1)
 
-        # Advertencias — bloque colapsable
         advertencias = r.get("advertencias_modelo", [])
         if advertencias:
             self._bloque_advertencias(sv, advertencias)
 
         modelo_id = getattr(s, "modelo_id", "promedio")
 
-        # ── Gráfico 1: Scatter consumos por año + LBEn ±10% (Modelos 1 y 2) ──
         if modelo_id in ("promedio", "cociente"):
             ctk.CTkLabel(sv, text="📊  Scatter consumos por mes — LBEn y límites ±10%",
                          font=(FONTS.family, FONTS.size_sm, "bold"),
@@ -145,7 +402,6 @@ class ResultadosPage(ctk.CTkFrame):
             g1.pack(fill="x", padx=12, pady=(0, 8))
             g1.plot_linea_base(r, titulo_proyecto=s.nombre_proyecto or "")
 
-        # ── Gráfico 2: Correlación consumo vs variable (solo Modelo 3 — Regresión) ─
         if modelo_id == "regresion":
             x_disp  = r.get("x_dispersion", [])
             x_label = r.get("x_label", "")
@@ -159,15 +415,14 @@ class ResultadosPage(ctk.CTkFrame):
                 g2.pack(fill="x", padx=12, pady=(0, 8))
                 g2.plot_correlacion_variable(r)
 
-        # ── Diagnósticos estadísticos (solo Modelo 3 — Regresión) ────────────
         if modelo_id == "regresion":
             self._card_diagnosticos_regresion(sv, r)
 
-        # Tabla 12 LBEn mensuales — COMPLETA (6 columnas) en ResultadosPage
         tabla_lben = r.get("tabla_lben_completa", [])
         cols_lben  = r.get("cols_lben_completa", [])
         if tabla_lben and cols_lben:
             self._card_tabla_lben(sv, tabla_lben, cols_lben)
+
 
     def _bloque_advertencias(self, parent, advertencias: list):
         """Bloque colapsable con contador — se expande al hacer clic."""
@@ -743,7 +998,9 @@ class ResultadosPage(ctk.CTkFrame):
 
     # ─────────────────────────────────────────────────────────────────────────
     def _exportar(self):
-        from tkinter import filedialog
+        from tkinter import filedialog, messagebox
+        import traceback
+
         path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx"), ("PDF", "*.pdf")],
@@ -751,8 +1008,18 @@ class ResultadosPage(ctk.CTkFrame):
         )
         if not path:
             return
-        from core.exportador import exportar_informe
-        exportar_informe(path, self.app.sesion.resultado, self.app.sesion)
+
+        try:
+            from core.exportador import exportar_informe
+            exportar_informe(path, self.app.sesion.resultado, self.app.sesion)
+            messagebox.showinfo("Exportación exitosa", f"Informe guardado en:\n{path}")
+        except Exception as e:
+        # Muestra el error real en pantalla
+            detalle = traceback.format_exc()
+            messagebox.showerror(
+                "Error al exportar",
+                f"No se pudo guardar el informe.\n\n{type(e).__name__}: {e}\n\n{detalle}"
+            )
 
     # ══════════════════════════════════════════════════════════════════════════
     # TAB 4 — Ajuste No Rutinario (ANR)

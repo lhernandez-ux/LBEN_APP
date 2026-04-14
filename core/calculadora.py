@@ -10,7 +10,7 @@ Flujo:
   3. Si existe df_reporte, genera predicciones para esos datos nuevos
      y calcula desempeño y CUSUM sobre el período de reporte.
   4. Si no hay df_reporte, el análisis se hace solo sobre el base.
-  
+
 Soporta diferentes frecuencias para el modelo de regresión.
 """
 
@@ -41,7 +41,7 @@ def calcular(
 ) -> dict:
     """
     Retorna un dict con todos los vectores y métricas para la UI.
-    
+
     Args:
         frecuencia: "mensual", "diario" o "horario" (solo usado para regresión)
     """
@@ -55,7 +55,7 @@ def calcular(
     )
     resumen_anr_dict = resumen_anr(log_anr) if hay_anr else {}
 
-    # ── 1. Ajustar el modelo ──────────────────────────────────────────────────
+    # ── 1. Ajustar el modelo ────────────────────────────────────────────────
     ModeloClass = MODELOS[modelo_id]
     modelo = ModeloClass(
         df=df_hist_anr,
@@ -78,7 +78,7 @@ def calcular(
         if hay_anr else []
     )
 
-    # ── 2. Predicciones para el período de reporte ────────────────────────────
+    # ── 2. Predicciones para el período de reporte ───────────────────────────
     if df_reporte is not None and len(df_reporte) > 0:
         fechas_rep, consumo_rep, lb_rep, ic_sup_rep, ic_inf_rep = \
             _predecir_reporte(modelo, df_reporte, col_consumo,
@@ -88,7 +88,7 @@ def calcular(
         fechas_rep = consumo_rep = lb_rep = ic_sup_rep = ic_inf_rep = []
         tiene_reporte = False
 
-    # ── 3. Vectores de análisis ───────────────────────────────────────────────
+    # ── 3. Vectores de análisis ──────────────────────────────────────────────
     if tiene_reporte:
         fechas_analisis  = fechas_rep
         consumo_analisis = consumo_rep
@@ -98,19 +98,16 @@ def calcular(
         consumo_analisis = consumo_hist
         lb_analisis      = lb_hist
 
-    # ── 4. Desviaciones y CUSUM ───────────────────────────────────────────────
+    # ── 4. Desviaciones y CUSUM ──────────────────────────────────────────────
     desv_abs = [r - b for r, b in zip(consumo_analisis, lb_analisis)]
     desv_pct = [((r - b) / b * 100) if b != 0 else 0.0
                 for r, b in zip(consumo_analisis, lb_analisis)]
     cusum = calcular_cusum(desv_abs)
 
     # ── 5. Variable de dispersión (para gráfico de correlación) ──────────────
-    # Para regresión usamos la variable principal (mayor |r de Pearson|)
-    # que ya calculó el modelo y guardó en params["var_principal"].
-    # Para los otros modelos usamos la primera variable independiente.
     if modelo_id == "regresion" and modelo.params.get("var_principal"):
         var_principal = modelo.params["var_principal"]
-        df_para_disp  = df_hist_anr   # siempre del base para el gráfico
+        df_para_disp  = df_hist_anr
         x_disp  = df_hist_anr[var_principal].tolist() if var_principal in df_hist_anr.columns else []
         x_label = var_principal
     else:
@@ -123,7 +120,7 @@ def calcular(
         fechas_analisis, consumo_analisis, lb_analisis, desv_abs, desv_pct
     )
 
-    # ── 7. Tabla LBEn mensual (promedio y cociente) ───────────────────────────
+    # ── 7. Tabla LBEn mensual (promedio y cociente) ──────────────────────────
     tabla_lben_m, cols_lben_m = [], []
     tabla_lben_c, cols_lben_c = [], []
 
@@ -137,11 +134,8 @@ def calcular(
         )
         tabla_lben_c = tabla_lben_m
         cols_lben_c  = cols_lben_m
-    # regresión: no tiene tabla LBEn mensual fija (la ecuación es la LBEn)
 
     # ── 8. modelo_params: parámetros completos para la UI ────────────────────
-    # Para regresión, modelo.params ya incluye x_hist (primera var independiente
-    # del base). Para los otros modelos lo extraemos aquí.
     params_extra = {}
     if modelo_id != "regresion":
         params_extra["x_hist"] = _x_dispersion(df_hist_anr, vars_independientes)[0]
@@ -149,9 +143,18 @@ def calcular(
     modelo_params = {
         **modelo.params,
         "modelo_id": modelo_id,
-        "frecuencia": frecuencia,  # guardar frecuencia en resultados
+        "frecuencia": frecuencia,
         **params_extra,
     }
+
+    # ── 9. POTENCIAL DE AHORRO (UPME 016/2024 - Numeral 8.1) ─────────────────
+    potencial = _calcular_potencial_ahorro(
+        df_hist_anr=df_hist_anr,
+        modelo=modelo,
+        modelo_id=modelo_id,
+        col_consumo=col_consumo,
+        vars_independientes=vars_independientes
+    )
 
     return {
         # Período base
@@ -202,13 +205,266 @@ def calcular(
         "resumen_anr":           resumen_anr_dict,
         "consumo_hist_original": consumo_hist_original,
         "fechas_hist_original":  fechas_hist if hay_anr else [],
-        
+
+        # Potenciales
+        "potencial":             potencial,
+
         # Frecuencia (para la UI)
         "frecuencia":            frecuencia,
     }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _calcular_potencial_ahorro(df_hist_anr, modelo, modelo_id,
+                              col_consumo, vars_independientes) -> dict:
+
+    from core.models.promedio import _extraer_numero_mes, _NOMBRES_MES
+
+    if df_hist_anr is None or len(df_hist_anr) == 0:
+        return {
+            "tabla_potencial": [],
+            "columnas_potencial": [],
+            "ahorro_total_kwh": 0.0,
+            "ahorro_total_pct": 0.0,
+        }
+
+    # detectar columna fecha (la que no es consumo ni variable)
+    posibles = [c for c in df_hist_anr.columns if c != col_consumo and c not in vars_independientes]
+    col_fecha = posibles[0] if posibles else None
+
+    if col_fecha is None:
+        return {
+            "tabla_potencial": [],
+            "columnas_potencial": [],
+            "ahorro_total_kwh": 0.0,
+            "ahorro_total_pct": 0.0,
+        }
+
+    df = df_hist_anr.dropna(subset=[col_consumo]).copy()
+    df[col_consumo] = df[col_consumo].astype(float)
+    df["__mes__"] = df[col_fecha].apply(_extraer_numero_mes)
+
+    # ────────────────────────────────────────────────────────────────────────
+    # MODELO 1: PROMEDIO (Valor absoluto)
+    # ────────────────────────────────────────────────────────────────────────
+    if modelo_id == "promedio":
+        lben_m = modelo.params.get("lben_mensual", {})
+
+        filas = []
+        ahorro_total = 0.0
+        pct_list = []
+
+        for mes in range(1, 13):
+            lb = lben_m.get(mes)
+            df_mes = df[df["__mes__"] == mes]
+            if lb is None or df_mes.empty:
+                filas.append([_NOMBRES_MES[mes], "Sin datos", "—", "—", "—"])
+                continue
+
+            minimo = float(df_mes[col_consumo].min())
+            ahorro = max(lb - minimo, 0.0)
+            pct = (ahorro / lb * 100) if lb != 0 else 0.0
+
+            ahorro_total += ahorro
+            pct_list.append(pct)
+
+            filas.append([
+                _NOMBRES_MES[mes],
+                f"{lb:,.0f}",
+                f"{minimo:,.0f}",
+                f"{ahorro:,.0f}",
+                f"{pct:.2f}%",
+            ])
+
+        pct_prom = float(np.mean(pct_list)) if pct_list else 0.0
+
+        return {
+            "metodo": "Modelo 1 — Valor absoluto",
+            "tabla_potencial": filas,
+            "columnas_potencial": ["Mes", "LBEn (kWh/mes)", "Mínimo Histórico (kWh)", "Ahorro Potencial (kWh)", "Ahorro (%)"],
+            "ahorro_total_kwh": round(ahorro_total, 2),
+            "ahorro_total_pct": round(pct_prom, 2),
+        }
+
+    # ────────────────────────────────────────────────────────────────────────
+    # MODELO 2: COCIENTE
+    # ────────────────────────────────────────────────────────────────────────
+    if modelo_id == "cociente":
+        if not vars_independientes:
+            return {
+                "tabla_potencial": [],
+                "columnas_potencial": [],
+                "ahorro_total_kwh": 0.0,
+                "ahorro_total_pct": 0.0,
+            }
+
+        col_x = vars_independientes[0]
+        if col_x not in df.columns:
+            return {
+                "tabla_potencial": [],
+                "columnas_potencial": [],
+                "ahorro_total_kwh": 0.0,
+                "ahorro_total_pct": 0.0,
+            }
+
+        df[col_x] = df[col_x].astype(float)
+        df = df[df[col_x] != 0].copy()
+
+        lben_ind_m = modelo.params.get("lben_mensual", {})
+
+        filas = []
+        ahorro_total = 0.0
+        pct_list = []
+
+        for mes in range(1, 13):
+            lb_ind = lben_ind_m.get(mes)
+            df_mes = df[df["__mes__"] == mes]
+
+            if lb_ind is None or df_mes.empty:
+                filas.append([_NOMBRES_MES[mes], "Sin datos", "—", "—", "—", "—"])
+                continue
+
+            # indicador real
+            indicadores = df_mes[col_consumo] / df_mes[col_x]
+            min_ind = float(indicadores.min())
+
+            ahorro_ind = max(lb_ind - min_ind, 0.0)
+
+            # convertir a kWh usando variable promedio mensual
+            var_prom = float(df_mes[col_x].mean())
+            ahorro_kwh = ahorro_ind * var_prom
+
+            pct = (ahorro_ind / lb_ind * 100) if lb_ind != 0 else 0.0
+
+            ahorro_total += ahorro_kwh
+            pct_list.append(pct)
+
+            filas.append([
+                _NOMBRES_MES[mes],
+                f"{lb_ind:,.2f}",
+                f"{min_ind:,.0f}",
+                f"{ahorro_ind:,.0f}",
+                f"{ahorro_kwh:,.0f}",
+                f"{pct:.2f}%",
+            ])
+
+        pct_prom = float(np.mean(pct_list)) if pct_list else 0.0
+
+        return {
+            "metodo": "Modelo 2 — Cociente valores medidos",
+            "tabla_potencial": filas,
+            "columnas_potencial": [
+                "Mes", "LBEn índice", "Índice mínimo", "Ahorro índice", "Ahorro (kWh)", "Ahorro (%)"
+            ],
+            "ahorro_total_kwh": round(ahorro_total, 2),
+            "ahorro_total_pct": round(pct_prom, 2),
+        }
+
+    # ────────────────────────────────────────────────────────────────────────
+    # MODELO 3: REGRESIÓN (LBEn vs Meta de mejores desempeños)
+    # ────────────────────────────────────────────────────────────────────────
+    if modelo_id == "regresion":
+        import statsmodels.api as sm
+
+        if not vars_independientes:
+            return {
+                "tabla_potencial": [],
+                "columnas_potencial": [],
+                "ahorro_total_kwh": 0.0,
+                "ahorro_total_pct": 0.0,
+            }
+
+        # construir X del base
+        X = np.column_stack([df[v].astype(float).values for v in vars_independientes]) \
+            if len(vars_independientes) > 1 else df[vars_independientes[0]].astype(float).values.reshape(-1, 1)
+
+        X_const = sm.add_constant(X, has_constant="add")
+        y = df[col_consumo].astype(float).values
+
+        # predicción LBEn
+        if hasattr(modelo, "_reg"):
+            y_lben = modelo._reg.predict(X_const)
+        else:
+            # fallback con coeficientes
+            coefs = modelo.params.get("coeficientes", {})
+            intercepto = coefs.get("Intercepto", 0)
+            pendientes = [coefs[v] for v in vars_independientes if v in coefs]
+            y_lben = []
+            for row in X.tolist():
+                if isinstance(row, (int, float)):
+                    pred = intercepto + pendientes[0] * row
+                else:
+                    pred = intercepto + sum(p * x for p, x in zip(pendientes, row))
+                y_lben.append(pred)
+            y_lben = np.array(y_lben)
+
+        delta = y - y_lben
+        mask_mejor = delta < 0
+
+        if mask_mejor.sum() < 3:
+            # no hay suficientes puntos para línea meta
+            return {
+                "metodo": "Modelo 3 — Regresión lineal",
+                "tabla_potencial": [],
+                "columnas_potencial": [],
+                "ahorro_total_kwh": 0.0,
+                "ahorro_total_pct": 0.0,
+                "nota": "No hay suficientes puntos de mejor desempeño para construir línea meta.",
+            }
+
+        X_mejor = X_const[mask_mejor]
+        y_mejor = y[mask_mejor]
+
+        # modelo de mejores desempeños
+        reg_meta = sm.OLS(y_mejor, X_mejor).fit()
+        y_meta = reg_meta.predict(X_const)
+
+        # agrupar por mes
+        filas = []
+        ahorro_total = 0.0
+        pct_list = []
+
+        for mes in range(1, 13):
+            idx = df["__mes__"] == mes
+            if idx.sum() == 0:
+                filas.append([_NOMBRES_MES[mes], "Sin datos", "—", "—", "—"])
+                continue
+
+            lb_mes = float(np.mean(y_lben[idx]))
+            meta_mes = float(np.mean(y_meta[idx]))
+
+            ahorro = max(lb_mes - meta_mes, 0.0)
+            pct = (ahorro / lb_mes * 100) if lb_mes != 0 else 0.0
+
+            ahorro_total += ahorro
+            pct_list.append(pct)
+
+            filas.append([
+                _NOMBRES_MES[mes],
+                f"{lb_mes:,.0f}",
+                f"{meta_mes:,.0f}",
+                f"{ahorro:,.0f}",
+                f"{pct:.2f}%",
+            ])
+
+        pct_prom = float(np.mean(pct_list)) if pct_list else 0.0
+
+        return {
+            "metodo": "Modelo 3 — Estadístico (regresión)",
+            "tabla_potencial": filas,
+            "columnas_potencial": ["Mes", "LBEn (kWh)", "Meta (kWh)", "Ahorro (kWh)", "Ahorro (%)"],
+            "ahorro_total_kwh": round(ahorro_total, 2),
+            "ahorro_total_pct": round(pct_prom, 2),
+        }
+
+    return {
+        "tabla_potencial": [],
+        "columnas_potencial": [],
+        "ahorro_total_kwh": 0.0,
+        "ahorro_total_pct": 0.0,
+    }
+
 
 def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, frecuencia):
     """
@@ -226,7 +482,6 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, fr
     mid = type(modelo).__name__
 
     if mid == "ModeloPromedio":
-        # LBEn del mes correspondiente del base
         from core.models.promedio import _extraer_numero_mes
         lben_mensual = modelo.params.get("lben_mensual", {})
         media_global = modelo.params.get("media",
@@ -238,7 +493,6 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, fr
             lb.append(lb_mes if lb_mes is not None else media_global)
 
     elif mid == "ModeloCociente":
-        # LBEn_período = cociente_mes × variable_período
         from core.models.promedio import _extraer_numero_mes
         col_x         = vars_ind[0]
         x             = df[col_x].astype(float).tolist()
@@ -251,19 +505,15 @@ def _predecir_reporte(modelo, df_rep, col_consumo, vars_ind, nivel_confianza, fr
             lb.append((coc_mes if coc_mes is not None else indice_global) * xi)
 
     else:  # ModeloRegresion
-        # Aplica la ecuación ajustada directamente usando statsmodels
         import statsmodels.api as sm
-        
-        # Preparar la matriz X con las variables independientes
+
         X = np.column_stack([df[v].astype(float).values for v in vars_ind]) \
             if len(vars_ind) > 1 else df[vars_ind[0]].astype(float).values.reshape(-1, 1)
         X_const = sm.add_constant(X, has_constant="add")
-        
+
         if hasattr(modelo, "_reg"):
-            # Usar el modelo ajustado de statsmodels
             lb = modelo._reg.predict(X_const).tolist()
         else:
-            # Fallback manual con los coeficientes
             coefs = list(modelo.coeficientes.values())
             intercepto = coefs[0]
             pendientes = coefs[1:]
@@ -307,7 +557,6 @@ def _calcular_kpis(consumo_real, linea_base, modelo) -> dict:
     media  = float(np.mean(consumo_real)) if n > 0 else 1.0
     cv     = (sem / media * 100) if media != 0 else 0.0
 
-    # R²: usar el del modelo si ya lo calculó (regresión), sino calcularlo aquí
     r2 = modelo.params.get("r2", None)
     if r2 is None:
         ss_res = sum(e**2 for e in err)
@@ -329,7 +578,7 @@ def _construir_tabla(fechas, consumo_real, linea_base, desv_abs, desv_pct):
     cols = ["Período", "Consumo real", "Línea base",
             "Desviación abs.", "Desviación (%)"]
     filas = [
-        [str(f), f"{r:,.2f}", f"{b:,.2f}", f"{d:+,.2f}", f"{p:+.1f}%"]
+        [str(f), f"{r:,.0f}", f"{b:,.0f}", f"{d:+,.0f}", f"{p:+.1f}%"]
         for f, r, b, d, p in zip(fechas, consumo_real, linea_base,
                                   desv_abs, desv_pct)
     ]
